@@ -1,6 +1,7 @@
 /// tomza_kit: Librería interna modular para apps Flutter de TOMZA.
 ///
 /// Este archivo centraliza las exportaciones públicas del paquete.
+library;
 
 // Core - Auth
 export 'core/auth/auth_service.dart';
@@ -9,8 +10,8 @@ export 'core/auth/session_manager.dart';
 
 // Core - Network
 export 'core/network/api_client.dart';
-export 'core/network/endpoints.dart';
 export 'core/network/network_exceptions.dart';
+export 'core/network/failures.dart';
 export 'core/network/env_config.dart';
 
 // Core - Storage
