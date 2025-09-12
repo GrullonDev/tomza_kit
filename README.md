@@ -121,6 +121,22 @@ await pm.printItems([
 ]);
 ```
 
+Base64 para imágenes:
+```dart
+// Convertir imagen a base64
+final bytes = Uint8List.fromList([/* datos de imagen */]);
+final base64String = ImageUtils.imageToBase64(bytes);
+
+// Convertir base64 a imagen
+final decodedBytes = ImageUtils.base64ToImage(base64String);
+
+// Desde archivo
+final base64FromFile = await ImageUtils.fileToBase64(File('path/to/image.jpg'));
+
+// A archivo temporal
+final tempFile = await ImageUtils.base64ToFile(base64String, 'temp_image.jpg');
+```
+
 ---
 ### 4. Módulos incluidos
 
@@ -130,7 +146,7 @@ await pm.printItems([
 | core/network | Cliente Dio centralizado | Agregar interceptor de token + retry + logging configurable |
 | core/storage | Preferencias y secure storage en memoria | Integrar shared_preferences / flutter_secure_storage |
 | core/location | GPS y utilidades | Integrar geolocator / geocoding |
-| features/media | Cámara e imágenes (stubs) | Integrar camera / image_picker / compresión |
+| features/media | Cámara e imágenes (stubs + base64) | Integrar camera / image_picker / compresión |
 | features/reports | KPIs y reportes simples | Extender con motores de agregación reales |
 | features/notifications | Push / locales (stubs) | Integrar firebase_messaging y flutter_local_notifications |
 | features/printing | Impresión Bixolon (stubs) | Canal nativo + manejo de colas / reconexión |
