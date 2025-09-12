@@ -154,7 +154,51 @@ final tempFile = await ImageUtils.base64ToFile(base64String, 'temp_image.jpg');
 | utils | Constantes, validadores, formateadores | Extender utilidades de fechas, números, masks |
 
 ---
-### 5. Versionado y políticas de actualización
+### 5. Componentes UI incluidos
+
+#### CustomDatePicker
+Widget personalizado para selección de fechas con restricciones específicas:
+
+```dart
+import 'package:tomza_kit/tomza_kit.dart';
+
+class MyWidget extends StatelessWidget {
+  const MyWidget({super.key});
+
+  void _showDatePicker(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (BuildContext context) => CustomDatePicker(
+        onDateChanged: (DateTime selectedDate) {
+          print('Fecha seleccionada: $selectedDate');
+        },
+        initialDate: DateTime.now(),
+        title: 'Seleccionar Fecha de Visita',
+        storeCode: 'STORE001', // Opcional
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ElevatedButton(
+      onPressed: () => _showDatePicker(context),
+      child: const Text('Seleccionar Fecha'),
+    );
+  }
+}
+```
+
+Características:
+- ✅ Calendario visual con navegación por meses
+- ✅ Restricciones de fecha (desde hoy hasta 5 años adelante)
+- ✅ Formato español (dd/mm/yyyy o mm/dd/yyyy)
+- ✅ Responsive (móvil y desktop)
+- ✅ Información opcional de tienda
+- ✅ Tema Material Design integrado
+
+---
+### 6. Versionado y políticas de actualización
 
 Se usa versionado semántico (SemVer): `MAJOR.MINOR.PATCH`.
 
