@@ -47,6 +47,7 @@ export 'ui/components/tomza_button.dart';
 export 'ui/components/tomza_card.dart';
 export 'ui/components/tomza_dialog.dart';
 export 'ui/components/custom_date_picker.dart';
+export 'ui/components/tomza_image.dart';
 export 'ui/themes/colors.dart';
 export 'ui/themes/typography.dart';
 
