@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:tomza_kit/ui/components/tomza_image.dart';
+import 'package:tomza_kit/ui/components/image/tomza_image.dart';
 
 void main() {
   testWidgets('TomzaImage shows placeholder when no source', (WidgetTester tester) async {
