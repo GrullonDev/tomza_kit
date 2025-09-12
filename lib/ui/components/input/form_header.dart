@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-class AuthFormHeader extends StatelessWidget {
-  const AuthFormHeader({
+class FormHeader extends StatelessWidget {
+  const FormHeader({
     super.key,
     required this.title,
     this.subtitle,
