@@ -124,7 +124,7 @@ class TomzaImage extends StatelessWidget {
       return ClipRRect(
         borderRadius: BorderRadius.circular(borderRadius),
         child: Image.asset(
-          'assets/${assetName!}',
+          assetName!,
           width: width,
           height: height,
           fit: fit,
