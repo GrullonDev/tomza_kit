@@ -6,7 +6,7 @@ import 'package:tomza_kit/core/network/failures.dart';
 import 'package:tomza_kit/utils/error.dart';
 import 'package:tomza_kit/utils/resource.dart';
 
-abstract class BaseBloc<T> extends ChangeNotifier {
+abstract class BaseModel<T> extends ChangeNotifier {
   /// Current resource state.
   Resource<T> resource = Resource<T>.initial();
 
