@@ -38,7 +38,7 @@ class ApiClient {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) => handler.next(options),
-  onResponse: (response, handler) => handler.next(response),
+        onResponse: (response, handler) => handler.next(response),
         onError: (e, handler) => handler.next(e),
       ),
     );
@@ -53,15 +53,23 @@ class ApiClient {
   }
 
   // Métodos HTTP genéricos --------------------------------------------------
-  static Future<Response<T>> get<T>(String path, {Map<String, dynamic>? query}) async {
+  static Future<Response<T>> get<T>(
+    String path, {
+    Object? data,
+    Map<String, dynamic>? query,
+  }) async {
     try {
-      return await _client.get<T>(path, queryParameters: query);
+      return await _client.get<T>(path, data: data, queryParameters: query);
     } on DioException catch (e) {
       throw _mapDioError(e);
     }
   }
 
-  static Future<Response<T>> post<T>(String path, {Object? body, Map<String, dynamic>? query}) async {
+  static Future<Response<T>> post<T>(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+  }) async {
     try {
       return await _client.post<T>(path, data: body, queryParameters: query);
     } on DioException catch (e) {
@@ -111,5 +119,3 @@ NetworkException _mapDioError(DioException e) {
   }
   return NetworkException(e.message ?? 'Error de red');
 }
-
-
