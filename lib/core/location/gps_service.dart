@@ -1,4 +1,5 @@
 /// GpsService: obtiene posición (simulada) del dispositivo.
+library;
 
 class GpsService {
   Future<(double lat, double lng)> getCurrentPosition() async {

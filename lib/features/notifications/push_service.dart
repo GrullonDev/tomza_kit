@@ -1,4 +1,5 @@
 /// PushService: stub para notificaciones push.
+library;
 
 class PushService {
   Future<void> initialize() async {

@@ -1,4 +1,5 @@
 /// ReportService: generación de reportes simple.
+library;
 
 class ReportService {
   Future<Map<String, num>> generateKpis(Map<String, num> data) async {

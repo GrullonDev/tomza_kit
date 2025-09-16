@@ -1,4 +1,5 @@
 /// CameraService: captura simulada de imágenes.
+library;
 
 class CameraService {
   Future<List<int>> takePictureBytes() async {
