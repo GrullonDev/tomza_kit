@@ -57,9 +57,17 @@ class ApiClient {
     String path, {
     Object? data,
     Map<String, dynamic>? query,
+    Map<String, String>? headers,
   }) async {
     try {
-      return await _client.get<T>(path, data: data, queryParameters: query);
+      return await _client.get<T>(
+        path,
+        data: data,
+        queryParameters: query,
+    options: headers == null
+      ? null
+      : Options(headers: {..._client.options.headers, ...headers}),
+      );
     } on DioException catch (e) {
       throw _mapDioError(e);
     }
@@ -69,25 +77,53 @@ class ApiClient {
     String path, {
     Object? body,
     Map<String, dynamic>? query,
+    Map<String, String>? headers,
   }) async {
     try {
-      return await _client.post<T>(path, data: body, queryParameters: query);
+      return await _client.post<T>(
+        path,
+        data: body,
+        queryParameters: query,
+    options: headers == null
+      ? null
+      : Options(headers: {..._client.options.headers, ...headers}),
+      );
     } on DioException catch (e) {
       throw _mapDioError(e);
     }
   }
 
-  static Future<Response<T>> put<T>(String path, {Object? body}) async {
+  static Future<Response<T>> put<T>(
+    String path, {
+    Object? body,
+    Map<String, String>? headers,
+  }) async {
     try {
-      return await _client.put<T>(path, data: body);
+      return await _client.put<T>(
+        path,
+        data: body,
+    options: headers == null
+      ? null
+      : Options(headers: {..._client.options.headers, ...headers}),
+      );
     } on DioException catch (e) {
       throw _mapDioError(e);
     }
   }
 
-  static Future<Response<T>> delete<T>(String path, {Object? body}) async {
+  static Future<Response<T>> delete<T>(
+    String path, {
+    Object? body,
+    Map<String, String>? headers,
+  }) async {
     try {
-      return await _client.delete<T>(path, data: body);
+      return await _client.delete<T>(
+        path,
+        data: body,
+    options: headers == null
+      ? null
+      : Options(headers: {..._client.options.headers, ...headers}),
+      );
     } on DioException catch (e) {
       throw _mapDioError(e);
     }
