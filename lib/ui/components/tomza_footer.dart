@@ -13,6 +13,7 @@ class TomzaFooter extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.icon,
+    required this.currencySymbol,
   });
 
   final double totalCorporations;
@@ -20,6 +21,7 @@ class TomzaFooter extends StatelessWidget {
   final String title;
   final String subtitle;
   final IconData icon;
+  final String currencySymbol;
 
   @override
   Widget build(BuildContext context) {
@@ -33,9 +35,9 @@ class TomzaFooter extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final textColor = theme.textTheme.bodyMedium?.color;
 
-    String money(BuildContext context, double v) {
+    String money(BuildContext context, double v, String symbol) {
       final locale = Localizations.localeOf(context).toString();
-      final format = NumberFormat.currency(locale: locale, symbol: '\$');
+      final format = NumberFormat.currency(locale: locale, symbol: symbol);
       return format.format(v);
     }
 
@@ -90,7 +92,7 @@ class TomzaFooter extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  money(context, totalAmount),
+                  money(context, totalAmount, currencySymbol),
                   textAlign: TextAlign.right,
                   style: GoogleFonts.titilliumWeb(
                     fontSize: isTablet ? 28 : 24,
