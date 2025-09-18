@@ -12,12 +12,14 @@ class TomzaFooter extends StatelessWidget {
     required this.totalAmount,
     required this.title,
     required this.subtitle,
+    required this.icon,
   });
 
   final double totalCorporations;
   final double totalAmount;
   final String title;
   final String subtitle;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -75,7 +77,7 @@ class TomzaFooter extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Icon(Icons.attach_money, size: 22, color: theme.iconTheme.color),
+              Icon(icon, size: 22, color: theme.iconTheme.color),
               const SizedBox(width: 4),
               Text(
                 subtitle,
