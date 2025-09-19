@@ -64,9 +64,9 @@ class ApiClient {
         path,
         data: data,
         queryParameters: query,
-    options: headers == null
-      ? null
-      : Options(headers: {..._client.options.headers, ...headers}),
+        options: headers == null
+            ? null
+            : Options(headers: {..._client.options.headers, ...headers}),
       );
     } on DioException catch (e) {
       throw _mapDioError(e);
@@ -84,9 +84,9 @@ class ApiClient {
         path,
         data: body,
         queryParameters: query,
-    options: headers == null
-      ? null
-      : Options(headers: {..._client.options.headers, ...headers}),
+        options: headers == null
+            ? null
+            : Options(headers: {..._client.options.headers, ...headers}),
       );
     } on DioException catch (e) {
       throw _mapDioError(e);
@@ -96,15 +96,17 @@ class ApiClient {
   static Future<Response<T>> put<T>(
     String path, {
     Object? body,
+    Map<String, dynamic>? query,
     Map<String, String>? headers,
   }) async {
     try {
       return await _client.put<T>(
         path,
         data: body,
-    options: headers == null
-      ? null
-      : Options(headers: {..._client.options.headers, ...headers}),
+        queryParameters: query,
+        options: headers == null
+            ? null
+            : Options(headers: {..._client.options.headers, ...headers}),
       );
     } on DioException catch (e) {
       throw _mapDioError(e);
@@ -114,15 +116,17 @@ class ApiClient {
   static Future<Response<T>> delete<T>(
     String path, {
     Object? body,
+    Map<String, dynamic>? query,
     Map<String, String>? headers,
   }) async {
     try {
       return await _client.delete<T>(
         path,
         data: body,
-    options: headers == null
-      ? null
-      : Options(headers: {..._client.options.headers, ...headers}),
+        queryParameters: query,
+        options: headers == null
+            ? null
+            : Options(headers: {..._client.options.headers, ...headers}),
       );
     } on DioException catch (e) {
       throw _mapDioError(e);
