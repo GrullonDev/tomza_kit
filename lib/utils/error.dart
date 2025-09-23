@@ -6,31 +6,65 @@ import 'package:tomza_kit/utils/animated_snack_content.dart';
 class ErrorNotifier {
   const ErrorNotifier._();
 
-  static void showFailure(BuildContext context, Failure failure) {
+  /// Optional global key that the host app can set so ErrorNotifier
+  /// can show SnackBars without a BuildContext.
+  static GlobalKey<ScaffoldMessengerState>? scaffoldMessengerKey;
+
+  /// Optional custom show callback. If provided, it's used instead of
+  /// internal SnackBar logic. Signature: (message, icon, color)
+  static void Function(String message, IconData icon, Color color)? showCallback;
+
+  /// Initialize the global key or custom callback from the host app.
+  /// Example: ErrorNotifier.scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+  /// and pass the key to MaterialApp.scaffoldMessengerKey.
+  static void initialize({GlobalKey<ScaffoldMessengerState>? messengerKey, void Function(String, IconData, Color)? callback}) {
+    scaffoldMessengerKey = messengerKey ?? scaffoldMessengerKey;
+    showCallback = callback ?? showCallback;
+  }
+
+  static void showFailure(BuildContext? context, Failure failure) {
     final String msg = _mapFailureMessage(failure);
     final IconData icon = _mapFailureIcon(failure);
-    final ColorScheme cs = Theme.of(context).colorScheme;
-    _showSnack(context, msg, icon: icon, color: cs.error);
+    final Color color = _resolveColor(context, (cs) => cs.error, Colors.red);
+    _show(msg, icon: icon, color: color, context: context);
   }
 
-  static void showInfo(BuildContext context, String message) {
-    final ColorScheme cs = Theme.of(context).colorScheme;
-    _showSnack(context, message, icon: Icons.info_outline, color: cs.primary);
+  static void showInfo(BuildContext? context, String message) {
+    final Color color = _resolveColor(context, (cs) => cs.primary, Colors.blue);
+    _show(message, icon: Icons.info_outline, color: color, context: context);
   }
 
-  static void showSuccess(BuildContext context, String message) {
-    _showSnack(context, message, icon: Icons.check_circle, color: Colors.green);
+  static void showSuccess(BuildContext? context, String message) {
+    final Color color = Colors.green;
+    _show(message, icon: Icons.check_circle, color: color, context: context);
   }
 
-  static void _showSnack(
-    BuildContext context,
+  // Helper: resolve a color using the provided context's ColorScheme when
+  // available, otherwise return the provided fallback color.
+  static Color _resolveColor(BuildContext? context, Color Function(ColorScheme) pick, Color fallback) {
+    if (context != null) {
+      try {
+        final ColorScheme cs = Theme.of(context).colorScheme;
+        return pick(cs);
+      } catch (_) {
+        // ignore and return fallback
+      }
+    }
+    return fallback;
+  }
+
+  static void _show(
     String message, {
     required IconData icon,
     required Color color,
+    BuildContext? context,
   }) {
-    if (!context.mounted) {
+    // If a custom callback is provided, use it
+    if (showCallback != null) {
+      showCallback!(message, icon, color);
       return;
     }
+
     final SnackBar snack = SnackBar(
       behavior: SnackBarBehavior.floating,
       backgroundColor: color.withValues(alpha: 0.94),
@@ -42,9 +76,32 @@ class ErrorNotifier {
       ),
       duration: const Duration(seconds: 3),
     );
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(snack);
+
+    // Prefer context if available and mounted
+    if (context != null) {
+      try {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context)
+            ..clearSnackBars()
+            ..showSnackBar(snack);
+          return;
+        }
+      } catch (_) {}
+    }
+
+    // Fallback to global scaffoldMessengerKey if available
+    if (scaffoldMessengerKey?.currentState != null) {
+      scaffoldMessengerKey!.currentState!
+        ..clearSnackBars()
+        ..showSnackBar(snack);
+      return;
+    }
+
+    // Last resort: print to console so host app devs can see the message
+    // (avoids silent failure when neither context nor key are set).
+    // This keeps library usage possible without forcing context usage.
+    // ignore: avoid_print
+    print('[TomzaKit] $message');
   }
 
   static String _mapFailureMessage(Failure f) {
