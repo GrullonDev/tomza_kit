@@ -102,6 +102,56 @@ final resp = await ApiClient.get<Map<String, dynamic>>('/usuarios');
 final data = resp.data;
 ```
 
+#### Manejo global de 401 (sesión inválida)
+
+La librería ofrece un punto para que la app consumidora registre un "handler" global que se ejecutará cuando el cliente HTTP reciba un 401. Esto permite, por ejemplo, mostrar un diálogo que solicita re-login y limpiar la sesión.
+
+En `main.dart` (o durante inicialización de la app):
+
+```dart
+void main() {
+	// Inicializar env + runApp como siempre
+
+	// Registrar handler global para 401s. El handler puede mostrar UI
+	// usando el BuildContext disponible en la app consumidora.
+	ApiClient.registerUnauthorizedHandler((error) async {
+		// Aquí la app consumidora debe decidir cómo mostrar UI. Ejemplo:
+		// - Navegar a pantalla de login
+		// - Mostrar diálogo modal que elimina sesión
+		// - Llamar a `handleUnauthorizedFailure(context, error, onLogout)`
+
+		// Retornar true si el evento fue manejado, false si no.
+		// Ejemplo mínimo: loguear y devolver false.
+		debugPrint('Unauthorized detected: $error');
+		return false;
+	});
+
+	runApp(const MyApp());
+}
+```
+
+Ejemplo más completo (dentro de un widget con `BuildContext`):
+
+```dart
+// Dentro de un StatefulWidget / service donde tengas acceso a BuildContext
+void registerHandler(BuildContext context) {
+	ApiClient.registerUnauthorizedHandler((error) async {
+		// Llamamos a la utilidad exportada por la librería que muestra
+		// un diálogo y ejecuta la acción de logout proporcionada por la app.
+		final handled = await handleUnauthorizedFailure(
+			context,
+			error,
+			() {
+				// Acción de logout: limpiar sesión y navegar a login
+				SessionManager().clear();
+				Navigator.of(context).pushReplacementNamed('/login');
+			},
+		);
+		return handled;
+	});
+}
+```
+
 Auth temporal (stub):
 ```dart
 final auth = InMemoryAuthService();
