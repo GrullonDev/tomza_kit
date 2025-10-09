@@ -12,12 +12,16 @@ class ErrorNotifier {
 
   /// Optional custom show callback. If provided, it's used instead of
   /// internal SnackBar logic. Signature: (message, icon, color)
-  static void Function(String message, IconData icon, Color color)? showCallback;
+  static void Function(String message, IconData icon, Color color)?
+  showCallback;
 
   /// Initialize the global key or custom callback from the host app.
   /// Example: ErrorNotifier.scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
   /// and pass the key to MaterialApp.scaffoldMessengerKey.
-  static void initialize({GlobalKey<ScaffoldMessengerState>? messengerKey, void Function(String, IconData, Color)? callback}) {
+  static void initialize({
+    GlobalKey<ScaffoldMessengerState>? messengerKey,
+    void Function(String, IconData, Color)? callback,
+  }) {
     scaffoldMessengerKey = messengerKey ?? scaffoldMessengerKey;
     showCallback = callback ?? showCallback;
   }
@@ -39,9 +43,18 @@ class ErrorNotifier {
     _show(message, icon: Icons.check_circle, color: color, context: context);
   }
 
+  static void showError(BuildContext? context, String message) {
+    final Color color = _resolveColor(context, (cs) => cs.error, Colors.red);
+    _show(message, icon: Icons.error_outline, color: color, context: context);
+  }
+
   // Helper: resolve a color using the provided context's ColorScheme when
   // available, otherwise return the provided fallback color.
-  static Color _resolveColor(BuildContext? context, Color Function(ColorScheme) pick, Color fallback) {
+  static Color _resolveColor(
+    BuildContext? context,
+    Color Function(ColorScheme) pick,
+    Color fallback,
+  ) {
     if (context != null) {
       try {
         final ColorScheme cs = Theme.of(context).colorScheme;
@@ -165,4 +178,5 @@ extension ErrorNotifierContext on BuildContext {
   void showFailure(Failure f) => ErrorNotifier.showFailure(this, f);
   void showInfo(String m) => ErrorNotifier.showInfo(this, m);
   void showSuccess(String m) => ErrorNotifier.showSuccess(this, m);
+  void showError(String m) => ErrorNotifier.showError(this, m);
 }

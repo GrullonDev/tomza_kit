@@ -10,8 +10,14 @@ import 'package:tomza_kit/utils/error.dart';
 /// All functions accept an optional [BuildContext]. If `null`, the
 /// library will try to use the configured `ErrorNotifier.scaffoldMessengerKey`
 /// or `ErrorNotifier.showCallback` (see `ErrorNotifier.initialize`).
-void showFailure(BuildContext? context, Failure failure) => ErrorNotifier.showFailure(context, failure);
+void showFailure(BuildContext? context, Failure failure) =>
+    ErrorNotifier.showFailure(context, failure);
 
-void showInfo(BuildContext? context, String message) => ErrorNotifier.showInfo(context, message);
+void showInfo(BuildContext? context, String message) =>
+    ErrorNotifier.showInfo(context, message);
 
-void showSuccess(BuildContext? context, String message) => ErrorNotifier.showSuccess(context, message);
+void showSuccess(BuildContext? context, String message) =>
+    ErrorNotifier.showSuccess(context, message);
+
+void showError(BuildContext? context, String message) =>
+    ErrorNotifier.showError(context, message);
