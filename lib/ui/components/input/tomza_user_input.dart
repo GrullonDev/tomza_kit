@@ -20,6 +20,8 @@ class UserInput extends StatefulWidget {
     this.enabled,
     this.prefixIcon,
     this.suffixIcon,
+    this.padding = const EdgeInsets.all(16),
+    this.borderRadius = 10.0,
   });
 
   final String title;
@@ -36,6 +38,8 @@ class UserInput extends StatefulWidget {
   final bool? enabled;
   final Widget? prefixIcon;
   final Widget? suffixIcon;
+  final EdgeInsetsGeometry? padding;
+  final double borderRadius;
 
   @override
   State<UserInput> createState() => _UserInputState();
@@ -56,7 +60,7 @@ class _UserInputState extends State<UserInput> {
     final theme = Theme.of(context);
 
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: widget.padding ?? EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -88,6 +92,10 @@ class _UserInputState extends State<UserInput> {
               hintStyle: theme.textTheme.bodySmall?.copyWith(
                 color: theme.hintColor,
               ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 14,
+              ),
               prefixIcon: widget.prefixIcon,
               suffixIcon: isPasswordField
                   ? IconButton(
@@ -106,18 +114,18 @@ class _UserInputState extends State<UserInput> {
               fillColor:
                   theme.inputDecorationTheme.fillColor ?? theme.cardColor,
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(widget.borderRadius),
               ),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(widget.borderRadius),
                 borderSide: BorderSide(color: theme.dividerColor),
               ),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(widget.borderRadius),
                 borderSide: BorderSide(color: theme.primaryColor),
               ),
               errorBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(widget.borderRadius),
                 borderSide: const BorderSide(color: Colors.red),
               ),
             ),

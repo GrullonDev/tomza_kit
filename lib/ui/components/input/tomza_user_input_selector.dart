@@ -8,6 +8,7 @@ class UserInputSelector<T> extends StatelessWidget {
     this.value,
     required this.options,
     required this.label,
+    this.title,
     this.hint,
     this.onChanged,
     this.validator,
@@ -15,12 +16,14 @@ class UserInputSelector<T> extends StatelessWidget {
     this.style,
     this.dropdownColor,
     this.dropdownMaxHeight = 250,
-    this.itemToString, // 👈 agregado
+    this.itemToString,
+    this.padding = const EdgeInsets.all(16),
   });
 
   final T? value;
   final List<T> options;
   final String label;
+  final String? title;
   final String? hint;
   final ValueChanged<T?>? onChanged;
   final Validator<T>? validator;
@@ -28,44 +31,78 @@ class UserInputSelector<T> extends StatelessWidget {
   final TextStyle? style;
   final Color? dropdownColor;
   final double dropdownMaxHeight;
-  final String Function(T)? itemToString; // 👈 agregado
+  final String Function(T)? itemToString;
+  final EdgeInsetsGeometry? padding;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final effectiveTextStyle = style ?? theme.textTheme.bodyMedium;
 
-    return DropdownButtonFormField<T>(
-      initialValue: value,
-      isExpanded: true,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 14,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(borderRadius),
-        ),
-        suffixIcon: const Icon(Icons.keyboard_arrow_down_rounded),
-      ),
-      style: effectiveTextStyle,
-      dropdownColor: dropdownColor ?? theme.canvasColor,
-      menuMaxHeight: dropdownMaxHeight,
-      icon: const SizedBox.shrink(),
-      items: options.map((opt) {
-        return DropdownMenuItem<T>(
-          value: opt,
-          child: Text(
-            itemToString?.call(opt) ?? opt.toString(),
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1,
+    return Padding(
+      padding: padding ?? EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (title != null) ...[
+            Text(
+              title!,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                color: theme.textTheme.bodyMedium?.color,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          DropdownButtonFormField<T>(
+            initialValue: value,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: label,
+              hintText: hint,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 14,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(borderRadius),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(borderRadius),
+                borderSide: BorderSide(color: theme.dividerColor),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(borderRadius),
+                borderSide: BorderSide(color: theme.primaryColor),
+              ),
+              errorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(borderRadius),
+                borderSide: const BorderSide(color: Colors.red),
+              ),
+              filled: true,
+              fillColor: theme.inputDecorationTheme.fillColor ?? theme.cardColor,
+              suffixIcon: const Icon(Icons.keyboard_arrow_down_rounded),
+            ),
+            style: effectiveTextStyle,
+            dropdownColor: dropdownColor ?? theme.canvasColor,
+            menuMaxHeight: dropdownMaxHeight,
+            icon: const SizedBox.shrink(),
+            items: options.map((opt) {
+              return DropdownMenuItem<T>(
+                value: opt,
+                child: Text(
+                  itemToString?.call(opt) ?? opt.toString(),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              );
+            }).toList(),
+            onChanged: onChanged,
+            validator: validator,
           ),
-        );
-      }).toList(),
-      onChanged: onChanged,
-      validator: validator,
+        ],
+      ),
     );
   }
 }
