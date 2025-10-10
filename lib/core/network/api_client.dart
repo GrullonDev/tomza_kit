@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -12,6 +13,7 @@ typedef Json = Map<String, dynamic>;
 class ApiClient {
   ApiClient._();
   static Dio? _dio;
+
   /// Optional global handler that host app can register to handle
   /// unauthorized events (e.g. show login dialog, force logout).
   /// Signature: (error) -> Future<bool> where return true means handled.
@@ -21,7 +23,9 @@ class ApiClient {
   /// accept an error object and return a Future<bool> indicating whether the
   /// event was handled. The host app can call `handleUnauthorizedFailure`
   /// from that handler to show UI, clear session, etc.
-  static void registerUnauthorizedHandler(Future<bool> Function(Object error)? handler) {
+  static void registerUnauthorizedHandler(
+    Future<bool> Function(Object error)? handler,
+  ) {
     unauthorizedHandler = handler;
   }
 
@@ -159,11 +163,48 @@ class ApiClient {
 }
 
 // Helpers --------------------------------------------------------------------
+String _composeUrl(RequestOptions o) {
+  final b = o.baseUrl;
+  final p = o.path;
+  if (p.startsWith('http')) return p;
+  if (b.endsWith('/') && p.startsWith('/')) return b + p.substring(1);
+  if (!b.endsWith('/') && !p.startsWith('/')) return '$b/$p';
+  return '$b$p';
+}
+
+String? _extractSnippet(dynamic data, {int max = 600}) {
+  if (data == null) return null;
+  try {
+    if (data is String) {
+      return data.length > max
+          ? '${data.substring(0, max)}...<truncated>'
+          : data;
+    }
+    final s = jsonEncode(data);
+    return s.length > max ? '${s.substring(0, max)}...<truncated>' : s;
+  } catch (_) {
+    final s = data.toString();
+    return s.length > max ? '${s.substring(0, max)}...<truncated>' : s;
+  }
+}
+
 NetworkException _mapDioError(DioException e) {
   final status = e.response?.statusCode;
+  final method = e.requestOptions.method;
+  final url = _composeUrl(e.requestOptions);
+  final reason = e.message ?? '';
+  final serverMsg = _extractSnippet(e.response?.data);
+
+  final msg =
+      '[$method $url] '
+      'status=${status ?? "n/a"} '
+      'type=${e.type} '
+      '${reason.isNotEmpty ? "reason=$reason " : ""}'
+      '${serverMsg != null ? "server=${serverMsg.replaceAll("\n", " ")}" : ""}';
+
   switch (status) {
     case 400:
-      return NetworkException.badRequest(e.message ?? 'Bad Request');
+      return NetworkException.badRequest(msg);
     case 401:
       return NetworkException.unauthorized();
     case 403:
@@ -171,15 +212,33 @@ NetworkException _mapDioError(DioException e) {
     case 404:
       return NetworkException.notFound();
     case 408:
-      return NetworkException.timeout();
+      return NetworkException.timeout(msg);
     case 500:
-      return NetworkException.server();
+      return NetworkException.server(msg);
   }
+
+  // Tipos sin status (muy útiles para saber qué pasó)
   if (e.type == DioExceptionType.connectionTimeout) {
-    return NetworkException.timeout('Connection timeout');
+    return NetworkException.timeout('Connection timeout: $msg');
+  }
+  if (e.type == DioExceptionType.sendTimeout) {
+    return NetworkException.timeout('Send timeout: $msg');
   }
   if (e.type == DioExceptionType.receiveTimeout) {
-    return NetworkException.timeout('Receive timeout');
+    return NetworkException.timeout('Receive timeout: $msg');
   }
-  return NetworkException(e.message ?? 'Error de red');
+  if (e.type == DioExceptionType.badCertificate) {
+    return NetworkException('Bad certificate: $msg');
+  }
+  if (e.type == DioExceptionType.connectionError) {
+    return NetworkException('Connection error: $msg');
+  }
+  if (e.type == DioExceptionType.cancel) {
+    return NetworkException('Request cancelled: $msg');
+  }
+  if (e.type == DioExceptionType.badResponse) {
+    return NetworkException('Bad response: $msg');
+  }
+
+  return NetworkException('Error de red: $msg');
 }
