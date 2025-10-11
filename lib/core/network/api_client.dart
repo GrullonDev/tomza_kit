@@ -9,20 +9,12 @@ import 'network_exceptions.dart';
 
 typedef Json = Map<String, dynamic>;
 
-/// ApiClient: wrapper sobre Dio con configuración centralizada.
 class ApiClient {
   ApiClient._();
   static Dio? _dio;
 
-  /// Optional global handler that host app can register to handle
-  /// unauthorized events (e.g. show login dialog, force logout).
-  /// Signature: (error) -> Future<bool> where return true means handled.
   static Future<bool> Function(Object error)? unauthorizedHandler;
 
-  /// Register a global unauthorized handler. The provided `handler` should
-  /// accept an error object and return a Future<bool> indicating whether the
-  /// event was handled. The host app can call `handleUnauthorizedFailure`
-  /// from that handler to show UI, clear session, etc.
   static void registerUnauthorizedHandler(
     Future<bool> Function(Object error)? handler,
   ) {
@@ -56,16 +48,12 @@ class ApiClient {
         onRequest: (options, handler) => handler.next(options),
         onResponse: (response, handler) => handler.next(response),
         onError: (e, handler) async {
-          // If a 401 is received, try to notify the registered handler.
           try {
             final status = e.response?.statusCode;
             if (status == 401 && unauthorizedHandler != null) {
-              // fire-and-forget, but await to give host app chance to react
               await unauthorizedHandler!(e);
             }
-          } catch (_) {
-            // swallow handler errors to avoid breaking network flow
-          }
+          } catch (_) {}
           handler.next(e);
         },
       ),
@@ -75,7 +63,6 @@ class ApiClient {
     return dio;
   }
 
-  /// Limpia la instancia (por ejemplo cambio de baseUrl dinámico).
   static void reset() {
     _dio = null;
   }
