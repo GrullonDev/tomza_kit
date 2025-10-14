@@ -18,6 +18,7 @@ class UserInputSelector<T> extends StatelessWidget {
     this.dropdownMaxHeight = 250,
     this.itemToString,
     this.padding = const EdgeInsets.all(16),
+    this.enabled = true,
   });
 
   final T? value;
@@ -33,6 +34,7 @@ class UserInputSelector<T> extends StatelessWidget {
   final double dropdownMaxHeight;
   final String Function(T)? itemToString;
   final EdgeInsetsGeometry? padding;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -58,6 +60,7 @@ class UserInputSelector<T> extends StatelessWidget {
           DropdownButtonFormField<T>(
             initialValue: value,
             isExpanded: true,
+            enableFeedback: enabled,
             decoration: InputDecoration(
               labelText: label,
               hintText: hint,
