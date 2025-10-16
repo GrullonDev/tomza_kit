@@ -68,7 +68,7 @@ abstract class BaseModel<T> extends ChangeNotifier {
     safeNotify();
     if (_attachedContext != null && _autoNotifyErrors) {
       // Mostrar snackbar si hay contexto adjunto
-      ErrorNotifier.showFailure(_attachedContext!, failure);
+      ErrorNotifier.showFailure(failure);
     }
   }
 

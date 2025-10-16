@@ -11,13 +11,13 @@ import 'package:tomza_kit/utils/error.dart';
 /// library will try to use the configured `ErrorNotifier.scaffoldMessengerKey`
 /// or `ErrorNotifier.showCallback` (see `ErrorNotifier.initialize`).
 void showFailure(BuildContext? context, Failure failure) =>
-    ErrorNotifier.showFailure(context, failure);
+    ErrorNotifier.showFailure(failure);
 
 void showInfo(BuildContext? context, String message) =>
-    ErrorNotifier.showInfo(context, message);
+    ErrorNotifier.showInfo(message);
 
 void showSuccess(BuildContext? context, String message) =>
-    ErrorNotifier.showSuccess(context, message);
+    ErrorNotifier.showSuccess(message);
 
 void showError(BuildContext? context, String message) =>
-    ErrorNotifier.showError(context, message);
+    ErrorNotifier.showError(message);
