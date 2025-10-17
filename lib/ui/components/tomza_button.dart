@@ -1,7 +1,6 @@
-// ignore_for_file: always_specify_types
 import 'package:flutter/material.dart';
 
-/// Botón primario general (fuera de autenticación) con estados de carga opcional.
+/// Tamaños disponibles para los botones.
 enum AppButtonSize { dense, regular }
 
 EdgeInsets _paddingFor(AppButtonSize size) {
@@ -26,7 +25,9 @@ class TomzaPrimaryButton extends StatelessWidget {
     this.minWidth,
     this.showLoadingLabel = false,
     this.loadingLabel = 'Cargando...',
+    this.color,
   });
+
   final String label;
   final VoidCallback? onPressed;
   final bool isLoading;
@@ -36,22 +37,26 @@ class TomzaPrimaryButton extends StatelessWidget {
   final double? minWidth;
   final bool showLoadingLabel;
   final String loadingLabel;
+  final Color? color;
 
-  // Keys exposed for testing specific internal states without relying solely on widget tree order.
   static const Key spinnerKey = ValueKey('appPrimaryButton_spinner');
   static const Key loadingLabelKey = ValueKey('appPrimaryButton_loadingLabel');
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final Color backgroundColor = color ?? Colors.blue;
+    final Color foregroundColor = theme.colorScheme.onPrimary;
+
     final Widget text = Text(
       label,
       style: theme.textTheme.labelLarge?.copyWith(
         fontWeight: FontWeight.w600,
-        color: theme.colorScheme.onPrimary,
+        color: foregroundColor,
       ),
     );
-    Widget child; // explicit type for analyzer
+
+    Widget child;
     if (isLoading) {
       final Widget spinner = SizedBox(
         key: spinnerKey,
@@ -59,9 +64,7 @@ class TomzaPrimaryButton extends StatelessWidget {
         height: 20,
         child: CircularProgressIndicator(
           strokeWidth: 2,
-          valueColor: AlwaysStoppedAnimation<Color>(
-            theme.colorScheme.onPrimary,
-          ),
+          valueColor: AlwaysStoppedAnimation<Color>(foregroundColor),
         ),
       );
       if (showLoadingLabel) {
@@ -75,7 +78,7 @@ class TomzaPrimaryButton extends StatelessWidget {
               key: loadingLabelKey,
               style: theme.textTheme.labelLarge?.copyWith(
                 fontWeight: FontWeight.w600,
-                color: theme.colorScheme.onPrimary,
+                color: foregroundColor,
               ),
             ),
           ],
@@ -87,7 +90,7 @@ class TomzaPrimaryButton extends StatelessWidget {
       child = Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Icon(icon, size: 18, color: theme.colorScheme.onPrimary),
+          Icon(icon, size: 18, color: foregroundColor),
           const SizedBox(width: 8),
           text,
         ],
@@ -97,6 +100,8 @@ class TomzaPrimaryButton extends StatelessWidget {
     }
 
     final ButtonStyle style = ElevatedButton.styleFrom(
+      backgroundColor: backgroundColor,
+      foregroundColor: foregroundColor,
       padding: _paddingFor(size),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     );
@@ -107,7 +112,7 @@ class TomzaPrimaryButton extends StatelessWidget {
       child: child,
     );
 
-    Widget wrapped = button; // explicit type for analyzer
+    Widget wrapped = button;
     if (expand) {
       wrapped = SizedBox(width: double.infinity, child: wrapped);
     } else if (minWidth != null) {
@@ -120,7 +125,7 @@ class TomzaPrimaryButton extends StatelessWidget {
   }
 }
 
-/// Botón secundario (gris / tonal) que mantiene jerarquía visual debajo del primario.
+/// Botón secundario (gris / tonal) con posibilidad de personalizar color.
 class TomzaSecondaryButton extends StatelessWidget {
   const TomzaSecondaryButton({
     super.key,
@@ -129,31 +134,36 @@ class TomzaSecondaryButton extends StatelessWidget {
     this.icon,
     this.expand = false,
     this.size = AppButtonSize.regular,
+    this.color,
   });
+
   final String label;
   final VoidCallback? onPressed;
   final IconData? icon;
   final bool expand;
   final AppButtonSize size;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    final Color bg = theme.colorScheme.surfaceContainerHighest;
-    final Color fg = theme.colorScheme.onSurfaceVariant;
+    final Color backgroundColor = color ?? theme.colorScheme.surfaceContainerHighest;
+    final Color foregroundColor = color != null ? Colors.white : theme.colorScheme.onSurfaceVariant;
+
     final Widget text = Text(
       label,
       style: theme.textTheme.labelLarge?.copyWith(
         fontWeight: FontWeight.w600,
-        color: fg,
+        color: foregroundColor,
       ),
     );
+
     Widget child;
     if (icon != null) {
       child = Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Icon(icon, size: 18, color: fg),
+          Icon(icon, size: 18, color: foregroundColor),
           const SizedBox(width: 8),
           text,
         ],
@@ -161,23 +171,26 @@ class TomzaSecondaryButton extends StatelessWidget {
     } else {
       child = text;
     }
+
     final ButtonStyle style = ElevatedButton.styleFrom(
-      backgroundColor: bg,
-      foregroundColor: fg,
+      backgroundColor: backgroundColor,
+      foregroundColor: foregroundColor,
       padding: _paddingFor(size),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       elevation: 0,
     );
+
     final ElevatedButton button = ElevatedButton(
       onPressed: onPressed,
       style: style,
       child: child,
     );
+
     return expand ? SizedBox(width: double.infinity, child: button) : button;
   }
 }
 
-/// Botón de texto plano con padding consistente.
+/// Botón de texto plano con color personalizable.
 class TomzaTextButton extends StatelessWidget {
   const TomzaTextButton({
     super.key,
@@ -185,29 +198,34 @@ class TomzaTextButton extends StatelessWidget {
     this.onPressed,
     this.icon,
     this.size = AppButtonSize.regular,
+    this.color,
   });
+
   final String label;
   final VoidCallback? onPressed;
   final IconData? icon;
   final AppButtonSize size;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    final Color fg = theme.colorScheme.primary;
+    final Color foregroundColor = color ?? Colors.blue;
+
     final Widget text = Text(
       label,
       style: theme.textTheme.labelLarge?.copyWith(
         fontWeight: FontWeight.w600,
-        color: fg,
+        color: foregroundColor,
       ),
     );
+
     Widget child;
     if (icon != null) {
       child = Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Icon(icon, size: 18, color: fg),
+          Icon(icon, size: 18, color: foregroundColor),
           const SizedBox(width: 6),
           text,
         ],
@@ -215,6 +233,7 @@ class TomzaTextButton extends StatelessWidget {
     } else {
       child = text;
     }
+
     return TextButton(
       onPressed: onPressed,
       style: TextButton.styleFrom(padding: _paddingFor(size)),
