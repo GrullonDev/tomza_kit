@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:tomza_kit/tomza_kit.dart';
 
 /// Tamaños disponibles para los botones.
 enum AppButtonSize { dense, regular }
@@ -45,7 +46,7 @@ class TomzaPrimaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    final Color backgroundColor = color ?? Colors.blue;
+    final Color backgroundColor = color ?? TomzaColors.primary;
     final Color foregroundColor = theme.colorScheme.onPrimary;
 
     final Widget text = Text(
@@ -210,7 +211,7 @@ class TomzaTextButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    final Color foregroundColor = color ?? Colors.blue;
+    final Color foregroundColor = color ?? TomzaColors.primary;
 
     final Widget text = Text(
       label,
