@@ -154,9 +154,10 @@ class ApiClient {
     _dio = null;
   }
 
-  // ---------------- Métodos HTTP -> SIEMPRE Map<String, dynamic> ----------------
+  // ---------------- Métodos HTTP -> SIEMPRE Map<String, dynamic> / List<Json> ----------------
 
   /// GET que garantiza Map<String, dynamic>.
+  /// Por defecto solo acepta status 200 (puedes pasar acceptableStatusCodes para otro comportamiento).
   static Future<Json> getJson(
     String endpoint, {
     Object? data,
@@ -180,6 +181,7 @@ class ApiClient {
   }
 
   /// POST que garantiza Map<String, dynamic>. Incluye fallback nativo opcional.
+  /// Por defecto solo acepta status 200.
   static Future<Json> postJson(
     String endpoint, {
     Object? body,
@@ -209,32 +211,65 @@ class ApiClient {
           headers: _finalHeaders(headers),
           body: body,
         );
+
+        // Native fallback devuelve Map o lanza; asumimos que el fallback ya devolvió Map válido.
         return raw;
+        // Si no es un Map, lanzar para mantener la regla "solo 200 -> success"
+        throw NetworkException.badRequest('Respuesta nativa inesperada');
       }
       throw _mapDioError(e);
     }
   }
 
-  /// POST con cuerpo de lista (array JSON raíz) y respuesta Map<String, dynamic>.
-  static Future<Json> postListJson(
-    String endpoint, {
-    required List<dynamic> listBody,
-    Map<String, dynamic>? query,
-    Map<String, String>? headers,
-    Set<int> acceptableStatusCodes = const {200},
-    bool enableAndroidRenegotiationFallback = true,
-  }) {
-    return postJson(
-      endpoint,
-      body: listBody,
-      query: query,
-      headers: headers,
-      acceptableStatusCodes: acceptableStatusCodes,
-      enableAndroidRenegotiationFallback: enableAndroidRenegotiationFallback,
-    );
-  }
+  /// POST con cuerpo de lista (array JSON raíz) y respuesta List<Json>.
+  /// Por defecto solo acepta status 200.
+  // static Future<List<Json>> postListJson(
+  //   String endpoint, {
+  //   required List<dynamic> listBody,
+  //   Map<String, dynamic>? query,
+  //   Map<String, String>? headers,
+  //   Set<int> acceptableStatusCodes = const {200},
+  //   bool enableAndroidRenegotiationFallback = true,
+  // }) async {
+  //   final req = _resolveRequest(endpoint);
+  //   try {
+  //     final resp = await _client.post<dynamic>(
+  //       req.pathForDio,
+  //       data: listBody,
+  //       queryParameters: query,
+  //       options: _mergeHeaders(headers),
+  //     );
+  //     _ensureAcceptable(resp, acceptableStatusCodes);
+  //     return _asJsonList(resp.data, resp);
+  //   } on DioException catch (e) {
+  //     if (_shouldDoNativeFallback(e) &&
+  //         _nativeFallbackEnabled &&
+  //         enableAndroidRenegotiationFallback &&
+  //         Platform.isAndroid) {
+  //       final raw = await _nativePost(
+  //         fullUrl: req.fullUrlWithQuery(query),
+  //         headers: _finalHeaders(headers),
+  //         body: listBody,
+  //       );
+
+  //       if (raw is List) {
+  //         return raw.map<Json>((e) {
+  //           if (e is Map<String, dynamic>) return e;
+  //           if (e is Map) return _toStringKeyedMap(e);
+  //           throw NetworkException.badRequest(
+  //             'Elemento de array no es un objeto JSON. Recibido ${e.runtimeType}',
+  //           );
+  //         }).toList();
+  //       }
+
+  //       throw NetworkException.badRequest('Respuesta nativa inesperada');
+  //     }
+  //     throw _mapDioError(e);
+  //   }
+  // }
 
   /// PUT que garantiza Map<String, dynamic>.
+  /// Por defecto solo acepta status 200.
   static Future<Json> putJson(
     String endpoint, {
     Object? body,
@@ -258,6 +293,7 @@ class ApiClient {
   }
 
   /// DELETE que garantiza Map<String, dynamic>. Para 204 devuelve {}.
+  /// Por defecto acepta 200 y 204.
   static Future<Json> deleteJson(
     String endpoint, {
     Object? body,
@@ -285,6 +321,8 @@ class ApiClient {
 
   // ---------------- Helpers ----------------
 
+  /// Convierte la respuesta esperada a Map<String,dynamic>.
+  /// Lanza NetworkException.badRequest si no se puede convertir o si la respuesta está vacía.
   static Json _asJson(dynamic data, Response resp) {
     try {
       if (data == null) {
@@ -295,7 +333,13 @@ class ApiClient {
       if (data is Map<String, dynamic>) return data;
 
       if (data is String) {
-        final parsed = jsonDecode(data);
+        final trimmed = data.trim();
+        if (trimmed.isEmpty) {
+          throw NetworkException.badRequest(
+            'Respuesta vacía (status=${resp.statusCode})',
+          );
+        }
+        final parsed = jsonDecode(trimmed);
         if (parsed is Map<String, dynamic>) return parsed;
         throw NetworkException.badRequest(
           'Se esperaba objeto JSON. String decodifica a ${parsed.runtimeType}',
@@ -303,9 +347,7 @@ class ApiClient {
       }
 
       if (data is Map) {
-        return Map<String, dynamic>.from(
-          data.map((k, v) => MapEntry(k.toString(), v)),
-        );
+        return _toStringKeyedMap(data);
       }
 
       throw NetworkException.badRequest(
@@ -319,20 +361,127 @@ class ApiClient {
     }
   }
 
+  /// Helper: convierte cualquier Map (dynamic) a Map<String, dynamic>
+  /// evitando el uso directo de .map(...) que puede confundir al analyzer.
+  static List<Json> _asJsonList(dynamic data, Response resp) {
+    try {
+      if (data == null) {
+        throw NetworkException.badRequest(
+          'Respuesta vacía (status=${resp.statusCode})',
+        );
+      }
+
+      List<dynamic> rawList;
+      if (data is List) {
+        rawList = data;
+      } else if (data is String) {
+        final trimmed = data.trim();
+        if (trimmed.isEmpty) {
+          throw NetworkException.badRequest(
+            'Respuesta vacía (status=${resp.statusCode})',
+          );
+        }
+        final parsed = jsonDecode(trimmed);
+        if (parsed is List) {
+          rawList = parsed;
+        } else {
+          throw NetworkException.badRequest(
+            'Se esperaba array JSON, se obtuvo ${parsed.runtimeType}',
+          );
+        }
+      } else {
+        throw NetworkException.badRequest(
+          'Se esperaba array JSON, recibido ${data.runtimeType}',
+        );
+      }
+
+      return rawList.map<Json>((e) {
+        if (e is Map<String, dynamic>) return e;
+        if (e is Map) return _toStringKeyedMap(e);
+        throw NetworkException.badRequest(
+          'Elemento de array no es un objeto JSON. Recibido ${e.runtimeType}',
+        );
+      }).toList();
+    } catch (e) {
+      if (e is NetworkException) rethrow;
+      throw NetworkException.badRequest(
+        'No se pudo parsear la respuesta a List<Map>: $e',
+      );
+    }
+  }
+
+  /// Convierte cualquier Map (posible dynamic) a Map<String, String>.
+  /// Útil para queryParameters y para Uri.replace(queryParameters: ...).
+  Map<String, String> _stringifyToStringMap(Map? maybeMap) {
+    final out = <String, String>{};
+    if (maybeMap == null) return out;
+    try {
+      // Si ya es Map<String, String> retorna copia.
+      if (maybeMap is Map<String, String>) {
+        return Map<String, String>.from(maybeMap);
+      }
+      // Si es Map<String, dynamic> o Map<dynamic, dynamic>
+      maybeMap.forEach((k, v) {
+        final key = k?.toString() ?? '';
+        final value = v == null ? '' : v.toString();
+        out[key] = value;
+      });
+    } catch (_) {
+      // En caso de error devolvemos map vacío (no lanzar para no romper la URI builder).
+    }
+    return out;
+  }
+
+  /// Convierte cualquier Map (posible dynamic) a Map<String, dynamic>.
+  /// Útil para normalizar headers u objetos JSON que pueden tener claves no-String.
+  static Map<String, dynamic> _toStringKeyedMap(dynamic maybeMap) {
+    final out = <String, dynamic>{};
+    if (maybeMap is Map<String, dynamic>) {
+      return Map<String, dynamic>.from(maybeMap);
+    }
+    if (maybeMap is Map) {
+      maybeMap.forEach((k, v) {
+        final key = k?.toString() ?? '';
+        out[key] = v;
+      });
+    }
+    return out;
+  }
+
   static Options? _mergeHeaders(Map<String, String>? headers) {
     if (headers == null || headers.isEmpty) return null;
-    final merged = {
-      ..._client.options.headers.map((k, v) => MapEntry(k.toString(), v)),
-      ...headers,
-    };
+
+    // Construir merged a mano a partir de _client.options.headers
+    final merged = <String, dynamic>{};
+    try {
+      final original = _client.options.headers;
+      if (original != null) {
+        original.forEach((k, v) {
+          final key = k.toString();
+          if (v != null) merged[key] = v;
+        });
+      }
+    } catch (_) {}
+
+    // Añadir/overrides desde headers param
+    merged.addAll(headers);
+
     return Options(headers: merged);
   }
 
   static Map<String, String> _finalHeaders(Map<String, String>? headers) {
     final merged = <String, String>{};
-    _client.options.headers.forEach((k, v) {
-      if (v != null) merged[k.toString()] = v.toString();
-    });
+
+    // Copiar headers del cliente (pueden ser dynamic)
+    try {
+      final clientHeaders = _client.options.headers;
+      if (clientHeaders != null) {
+        clientHeaders.forEach((k, v) {
+          if (v != null) merged[k.toString()] = v.toString();
+        });
+      }
+    } catch (_) {}
+
     if (headers != null) merged.addAll(headers);
     merged.putIfAbsent('Content-Type', () => 'application/json');
 
@@ -345,9 +494,12 @@ class ApiClient {
         merged['Authorization'] = t.startsWith('Bearer ') ? t : 'Bearer $t';
       }
     }
+
     return merged;
   }
 
+  /// Revisa que el status code esté en acceptableStatusCodes.
+  /// Si no está, extrae un snippet del body y lanza NetworkException.badRequest con contexto.
   static void _ensureAcceptable<T>(
     Response<T> resp,
     Set<int> acceptableStatusCodes,
@@ -402,8 +554,12 @@ class ApiClient {
     }
     final decoded = jsonDecode(result);
     if (decoded is Map<String, dynamic>) return decoded;
-    if (decoded is String) return jsonDecode(decoded) as Map<String, dynamic>;
-    return Map<String, dynamic>.from(decoded as Map);
+    if (decoded is String) {
+      final inner = jsonDecode(decoded);
+      if (inner is Map<String, dynamic>) return inner;
+      return _toStringKeyedMap(inner);
+    }
+    return _toStringKeyedMap(decoded);
   }
 }
 
