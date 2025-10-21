@@ -2,10 +2,11 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:dio/dio.dart';
-import 'package:dio/io.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+
+import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 
 import 'env_config.dart';
 import 'network_exceptions.dart';
@@ -18,12 +19,14 @@ class ApiClient {
   // ---------------- Configuración / inyección ----------------
   static Dio? _dio;
 
+  /// Handler opcional para manejar 401 centralizadamente (refresh/logout).
   static Future<bool> Function(Object error)? unauthorizedHandler;
 
+  /// Callbacks para integración con tu store de tokens (AuthTokenStore, etc.)
   static String? Function()? _tokenProvider;
   static Future<void> Function(String token)? _tokenSaver;
 
-  // Fallback nativo Android (configurable desde la app, NO depende de EnvConfig)
+  // Fallback nativo Android (configurable desde la app; NO depende de EnvConfig)
   static bool _nativeFallbackEnabled = false;
   static String? _nativeChannelName;
 
@@ -43,7 +46,10 @@ class ApiClient {
 
   /// Activa/desactiva el fallback nativo y define el channel.
   /// Si [enable] es true, debes pasar [channelName].
-  static void configureNativeFallback({required bool enable, String? channelName}) {
+  static void configureNativeFallback({
+    required bool enable,
+    String? channelName,
+  }) {
     _nativeFallbackEnabled = enable;
     _nativeChannelName = channelName;
     if (enable && (channelName == null || channelName.trim().isEmpty)) {
@@ -62,10 +68,7 @@ class ApiClient {
       baseUrl: cfg.baseUrl,
       connectTimeout: cfg.connectTimeout,
       receiveTimeout: cfg.receiveTimeout,
-      headers: {
-        ...cfg.defaultHeaders,
-        'Content-Type': 'application/json',
-      },
+      headers: {...cfg.defaultHeaders, 'Content-Type': 'application/json'},
       responseType: ResponseType.json,
     );
 
@@ -90,13 +93,15 @@ class ApiClient {
               (k) => k.toLowerCase() == 'authorization',
             );
             if (!hasAuth) {
-              options.headers['Authorization'] =
-                  t.startsWith('Bearer ') ? t : 'Bearer $t';
+              options.headers['Authorization'] = t.startsWith('Bearer ')
+                  ? t
+                  : 'Bearer $t';
             }
           }
           handler.next(options);
         },
         onResponse: (response, handler) {
+          // Captura de token desde headers/body si corresponde
           try {
             final hdrs = _normalizeHeaders(response.headers);
             _tryCaptureTokenFromHeaders(hdrs);
@@ -144,12 +149,14 @@ class ApiClient {
     return dio;
   }
 
+  /// Si cambias entorno/baseUrl/headers globales, llama a reset().
   static void reset() {
     _dio = null;
   }
 
-  // ---------------- Métodos HTTP -> siempre Map<String, dynamic> ----------------
+  // ---------------- Métodos HTTP -> SIEMPRE Map<String, dynamic> ----------------
 
+  /// GET que garantiza Map<String, dynamic>.
   static Future<Json> getJson(
     String endpoint, {
     Object? data,
@@ -172,6 +179,7 @@ class ApiClient {
     }
   }
 
+  /// POST que garantiza Map<String, dynamic>. Incluye fallback nativo opcional.
   static Future<Json> postJson(
     String endpoint, {
     Object? body,
@@ -191,7 +199,7 @@ class ApiClient {
       _ensureAcceptable(resp, acceptableStatusCodes);
       return _asJson(resp.data, resp);
     } on DioException catch (e) {
-      // Usa SOLO la config interna del ApiClient (no EnvConfig)
+      // Fallback nativo Android si está habilitado localmente
       if (_shouldDoNativeFallback(e) &&
           _nativeFallbackEnabled &&
           enableAndroidRenegotiationFallback &&
@@ -207,6 +215,7 @@ class ApiClient {
     }
   }
 
+  /// POST con cuerpo de lista (array JSON raíz) y respuesta Map<String, dynamic>.
   static Future<Json> postListJson(
     String endpoint, {
     required List<dynamic> listBody,
@@ -225,6 +234,7 @@ class ApiClient {
     );
   }
 
+  /// PUT que garantiza Map<String, dynamic>.
   static Future<Json> putJson(
     String endpoint, {
     Object? body,
@@ -247,6 +257,7 @@ class ApiClient {
     }
   }
 
+  /// DELETE que garantiza Map<String, dynamic>. Para 204 devuelve {}.
   static Future<Json> deleteJson(
     String endpoint, {
     Object? body,
@@ -287,7 +298,7 @@ class ApiClient {
         final parsed = jsonDecode(data);
         if (parsed is Map<String, dynamic>) return parsed;
         throw NetworkException.badRequest(
-          'Se esperaba objeto JSON. Recibido String que decodifica a ${parsed.runtimeType}',
+          'Se esperaba objeto JSON. String decodifica a ${parsed.runtimeType}',
         );
       }
 
@@ -327,7 +338,9 @@ class ApiClient {
 
     final t = _tokenProvider?.call();
     if (t != null && t.isNotEmpty) {
-      final hasAuth = merged.keys.any((k) => k.toLowerCase() == 'authorization');
+      final hasAuth = merged.keys.any(
+        (k) => k.toLowerCase() == 'authorization',
+      );
       if (!hasAuth) {
         merged['Authorization'] = t.startsWith('Bearer ') ? t : 'Bearer $t';
       }
@@ -349,10 +362,11 @@ class ApiClient {
     }
   }
 
+  // ---------------- Fallback nativo Android ----------------
+
   static bool _shouldDoNativeFallback(DioException e) {
     final msg = (e.message ?? '').toUpperCase();
     return msg.contains('NO_RENEGOTIATION') || msg.contains('RENEGOTIATION');
-    // puedes agregar más heurísticas si tu caso las necesita
   }
 
   static Future<Json> _nativePost({
@@ -363,7 +377,7 @@ class ApiClient {
     if (!_nativeFallbackEnabled ||
         _nativeChannelName == null ||
         _nativeChannelName!.trim().isEmpty) {
-      throw  NetworkException(
+      throw NetworkException(
         'Fallback nativo está deshabilitado o el channel no fue configurado.',
       );
     }
@@ -380,15 +394,11 @@ class ApiClient {
     final channel = MethodChannel(_nativeChannelName!);
     final result = await channel.invokeMethod<String>(
       'nativePost',
-      <String, dynamic>{
-        'url': fullUrl,
-        'headers': headers,
-        'body': payload,
-      },
+      <String, dynamic>{'url': fullUrl, 'headers': headers, 'body': payload},
     );
 
     if (result == null || result.isEmpty) {
-      throw  NetworkException('Respuesta nativa vacía');
+      throw NetworkException('Respuesta nativa vacía');
     }
     final decoded = jsonDecode(result);
     if (decoded is Map<String, dynamic>) return decoded;
@@ -419,17 +429,20 @@ class _ResolvedRequest {
   String fullUrlWithQuery(Map<String, dynamic>? query) {
     if (isAbsolute) {
       final uri = Uri.parse(_endpoint);
-      return uri.replace(
-        queryParameters: {
-          ...uri.queryParameters,
-          if (query != null)
-            ...query.map((k, v) => MapEntry(k, v?.toString() ?? '')),
-        },
-      ).toString();
+      return uri
+          .replace(
+            queryParameters: {
+              ...uri.queryParameters,
+              if (query != null)
+                ...query.map((k, v) => MapEntry(k, v?.toString() ?? '')),
+            },
+          )
+          .toString();
     }
     final base = EnvConfig.instance.baseUrl;
-    final baseClean =
-        base.endsWith('/') ? base.substring(0, base.length - 1) : base;
+    final baseClean = base.endsWith('/')
+        ? base.substring(0, base.length - 1)
+        : base;
     final path = _cleanRelative(_endpoint);
     final uri = Uri.parse('$baseClean/$path').replace(
       queryParameters: query?.map((k, v) => MapEntry(k, v?.toString() ?? '')),
@@ -456,7 +469,9 @@ String? _extractSnippet(dynamic data, {int max = 600}) {
   if (data == null) return null;
   try {
     if (data is String) {
-      return data.length > max ? '${data.substring(0, max)}...<truncated>' : data;
+      return data.length > max
+          ? '${data.substring(0, max)}...<truncated>'
+          : data;
     }
     final s = jsonEncode(data);
     return s.length > max ? '${s.substring(0, max)}...<truncated>' : s;
@@ -544,7 +559,8 @@ NetworkException _mapDioError(DioException e) {
   final reason = e.message ?? '';
   final serverMsg = _extractSnippet(e.response?.data);
 
-  final msg = '[$method $url] '
+  final msg =
+      '[$method $url] '
       'status=${status ?? "n/a"} '
       'type=${e.type} '
       '${reason.isNotEmpty ? "reason=$reason " : ""}'
