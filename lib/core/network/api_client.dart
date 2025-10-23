@@ -16,19 +16,31 @@ typedef Json = Map<String, dynamic>;
 class ApiClient {
   ApiClient._();
 
-  // ---------------- Configuración / inyección ----------------
+  // ---------------------------------------------------------------------------
+  // Configuración / inyección
+  // ---------------------------------------------------------------------------
   static Dio? _dio;
 
   /// Handler opcional para manejar 401 centralizadamente (refresh/logout).
   static Future<bool> Function(Object error)? unauthorizedHandler;
 
-  /// Callbacks para integración con tu store de tokens (AuthTokenStore, etc.)
-  static String? Function()? _tokenProvider;
-  static Future<void> Function(String token)? _tokenSaver;
+  /// Callbacks opcionales para integrarte con tu store (persistir/leer token).
+  static String? Function()? _externalTokenValueProvider;
+  static String? Function()? _externalTokenHeaderNameProvider;
+  static Future<void> Function(String token)? _externalTokenValueSaver;
+  static Future<void> Function(String? headerName)?
+  _externalTokenHeaderNameSaver;
 
-  // Fallback nativo Android (configurable desde la app; NO depende de EnvConfig)
+  /// Fallback nativo Android (no depende de EnvConfig).
   static bool _nativeFallbackEnabled = false;
   static String? _nativeChannelName;
+
+  /// Estrategia de inyección por defecto cuando no se conoce el nombre de header.
+  static String _defaultAuthHeaderName = 'Authorization';
+  static bool _defaultPrependBearer = true;
+
+  /// Estado interno (por si no registras providers/savers externos).
+  static final _TokenState _token = _TokenState();
 
   static void registerUnauthorizedHandler(
     Future<bool> Function(Object error)? handler,
@@ -36,16 +48,30 @@ class ApiClient {
     unauthorizedHandler = handler;
   }
 
+  /// Registra acceso externo a token/encabezado (ej. SecureStorage).
   static void registerTokenAccess({
-    String? Function()? getToken,
-    Future<void> Function(String token)? saveToken,
+    String? Function()? getTokenValue,
+    String? Function()? getTokenHeaderName,
+    Future<void> Function(String token)? saveTokenValue,
+    Future<void> Function(String? headerName)? saveTokenHeaderName,
   }) {
-    _tokenProvider = getToken;
-    _tokenSaver = saveToken;
+    _externalTokenValueProvider = getTokenValue;
+    _externalTokenHeaderNameProvider = getTokenHeaderName;
+    _externalTokenValueSaver = saveTokenValue;
+    _externalTokenHeaderNameSaver = saveTokenHeaderName;
   }
 
-  /// Activa/desactiva el fallback nativo y define el channel.
-  /// Si [enable] es true, debes pasar [channelName].
+  /// Configura cómo inyectar el token cuando no conocemos el nombre de header.
+  /// Por defecto: header "Authorization" y se antepone "Bearer " si no está.
+  static void configureAuthInjection({
+    String defaultHeaderName = 'Authorization',
+    bool prependBearerIfMissing = true,
+  }) {
+    _defaultAuthHeaderName = defaultHeaderName;
+    _defaultPrependBearer = prependBearerIfMissing;
+  }
+
+  /// Activa/desactiva fallback nativo Android y define el canal.
   static void configureNativeFallback({
     required bool enable,
     String? channelName,
@@ -59,7 +85,9 @@ class ApiClient {
     }
   }
 
-  // ---------------- Cliente Dio ----------------
+  // ---------------------------------------------------------------------------
+  // Cliente Dio
+  // ---------------------------------------------------------------------------
   static Dio get _client {
     final cfg = EnvConfig.instance;
     if (_dio != null) return _dio!;
@@ -87,33 +115,28 @@ class ApiClient {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
-          final t = _tokenProvider?.call();
-          if (t != null && t.isNotEmpty) {
-            final hasAuth = options.headers.keys.any(
-              (k) => k.toLowerCase() == 'authorization',
+          // Inyectar token si existe (nullable-aware)
+          final injected = _maybeInjectAuthHeader(options.headers);
+          if (cfg.isDevelopment) {
+            debugPrint(
+              '[ApiClient][REQ] injectAuth=$injected headerName=$_currentHeaderName',
             );
-            if (!hasAuth) {
-              options.headers['Authorization'] = t.startsWith('Bearer ')
-                  ? t
-                  : 'Bearer $t';
-            }
           }
           handler.next(options);
         },
         onResponse: (response, handler) {
-          // Captura de token desde headers/body si corresponde
+          // Captura de token si vino en headers/body
           try {
             final hdrs = _normalizeHeaders(response.headers);
-            _tryCaptureTokenFromHeaders(hdrs);
-
+            _captureTokenFromHeaders(hdrs);
             final data = response.data;
             if (data is Map<String, dynamic>) {
-              _tryCaptureTokenFromBody(data);
+              _captureTokenFromBody(data);
             } else if (data is String) {
               try {
                 final parsed = jsonDecode(data);
                 if (parsed is Map<String, dynamic>) {
-                  _tryCaptureTokenFromBody(parsed);
+                  _captureTokenFromBody(parsed);
                 }
               } catch (_) {}
             }
@@ -154,13 +177,13 @@ class ApiClient {
     _dio = null;
   }
 
-  // ---------------- Métodos HTTP -> SIEMPRE Map<String, dynamic> / List<Json> ----------------
+  // ---------------------------------------------------------------------------
+  // Métodos HTTP -> SIEMPRE Map<String, dynamic>
+  // ---------------------------------------------------------------------------
 
-  /// GET que garantiza Map<String, dynamic>.
-  /// Por defecto solo acepta status 200 (puedes pasar acceptableStatusCodes para otro comportamiento).
   static Future<Json> getJson(
     String endpoint, {
-    Object? data,
+    Map<String, dynamic>? data,
     Map<String, dynamic>? query,
     Map<String, String>? headers,
     Set<int> acceptableStatusCodes = const {200},
@@ -174,14 +197,17 @@ class ApiClient {
         options: _mergeHeaders(headers),
       );
       _ensureAcceptable(resp, acceptableStatusCodes);
-      return _asJson(resp.data, resp);
+      // Si el cuerpo viene vacío pero el estatus es exitoso, retorna {}.
+      final respData = resp.data;
+      if (respData == null || (respData is String && respData.trim().isEmpty)) {
+        return <String, dynamic>{};
+      }
+      return _asJson(respData, resp);
     } on DioException catch (e) {
       throw _mapDioError(e);
     }
   }
 
-  /// POST que garantiza Map<String, dynamic>. Incluye fallback nativo opcional.
-  /// Por defecto solo acepta status 200.
   static Future<Json> postJson(
     String endpoint, {
     Object? body,
@@ -199,9 +225,12 @@ class ApiClient {
         options: _mergeHeaders(headers),
       );
       _ensureAcceptable(resp, acceptableStatusCodes);
-      return _asJson(resp.data, resp);
+      final respData = resp.data;
+      if (respData == null || (respData is String && respData.trim().isEmpty)) {
+        return <String, dynamic>{};
+      }
+      return _asJson(respData, resp);
     } on DioException catch (e) {
-      // Fallback nativo Android si está habilitado localmente
       if (_shouldDoNativeFallback(e) &&
           _nativeFallbackEnabled &&
           enableAndroidRenegotiationFallback &&
@@ -211,65 +240,30 @@ class ApiClient {
           headers: _finalHeaders(headers),
           body: body,
         );
-
-        // Native fallback devuelve Map o lanza; asumimos que el fallback ya devolvió Map válido.
         return raw;
-        // Si no es un Map, lanzar para mantener la regla "solo 200 -> success"
-        throw NetworkException.badRequest('Respuesta nativa inesperada');
       }
       throw _mapDioError(e);
     }
   }
 
-  /// POST con cuerpo de lista (array JSON raíz) y respuesta List<Json>.
-  /// Por defecto solo acepta status 200.
-  // static Future<List<Json>> postListJson(
-  //   String endpoint, {
-  //   required List<dynamic> listBody,
-  //   Map<String, dynamic>? query,
-  //   Map<String, String>? headers,
-  //   Set<int> acceptableStatusCodes = const {200},
-  //   bool enableAndroidRenegotiationFallback = true,
-  // }) async {
-  //   final req = _resolveRequest(endpoint);
-  //   try {
-  //     final resp = await _client.post<dynamic>(
-  //       req.pathForDio,
-  //       data: listBody,
-  //       queryParameters: query,
-  //       options: _mergeHeaders(headers),
-  //     );
-  //     _ensureAcceptable(resp, acceptableStatusCodes);
-  //     return _asJsonList(resp.data, resp);
-  //   } on DioException catch (e) {
-  //     if (_shouldDoNativeFallback(e) &&
-  //         _nativeFallbackEnabled &&
-  //         enableAndroidRenegotiationFallback &&
-  //         Platform.isAndroid) {
-  //       final raw = await _nativePost(
-  //         fullUrl: req.fullUrlWithQuery(query),
-  //         headers: _finalHeaders(headers),
-  //         body: listBody,
-  //       );
+  static Future<Json> postListJson(
+    String endpoint, {
+    required List<dynamic> listBody,
+    Map<String, dynamic>? query,
+    Map<String, String>? headers,
+    Set<int> acceptableStatusCodes = const {200},
+    bool enableAndroidRenegotiationFallback = true,
+  }) {
+    return postJson(
+      endpoint,
+      body: listBody,
+      query: query,
+      headers: headers,
+      acceptableStatusCodes: acceptableStatusCodes,
+      enableAndroidRenegotiationFallback: enableAndroidRenegotiationFallback,
+    );
+  }
 
-  //       if (raw is List) {
-  //         return raw.map<Json>((e) {
-  //           if (e is Map<String, dynamic>) return e;
-  //           if (e is Map) return _toStringKeyedMap(e);
-  //           throw NetworkException.badRequest(
-  //             'Elemento de array no es un objeto JSON. Recibido ${e.runtimeType}',
-  //           );
-  //         }).toList();
-  //       }
-
-  //       throw NetworkException.badRequest('Respuesta nativa inesperada');
-  //     }
-  //     throw _mapDioError(e);
-  //   }
-  // }
-
-  /// PUT que garantiza Map<String, dynamic>.
-  /// Por defecto solo acepta status 200.
   static Future<Json> putJson(
     String endpoint, {
     Object? body,
@@ -286,14 +280,16 @@ class ApiClient {
         options: _mergeHeaders(headers),
       );
       _ensureAcceptable(resp, acceptableStatusCodes);
-      return _asJson(resp.data, resp);
+      final respData = resp.data;
+      if (respData == null || (respData is String && respData.trim().isEmpty)) {
+        return <String, dynamic>{};
+      }
+      return _asJson(respData, resp);
     } on DioException catch (e) {
       throw _mapDioError(e);
     }
   }
 
-  /// DELETE que garantiza Map<String, dynamic>. Para 204 devuelve {}.
-  /// Por defecto acepta 200 y 204.
   static Future<Json> deleteJson(
     String endpoint, {
     Object? body,
@@ -310,7 +306,9 @@ class ApiClient {
         options: _mergeHeaders(headers),
       );
       _ensureAcceptable(resp, acceptableStatusCodes);
-      if ((resp.statusCode ?? 0) == 204 || resp.data == null) {
+      if ((resp.statusCode ?? 0) == 204 ||
+          resp.data == null ||
+          (resp.data is String && (resp.data as String).trim().isEmpty)) {
         return <String, dynamic>{};
       }
       return _asJson(resp.data, resp);
@@ -319,10 +317,141 @@ class ApiClient {
     }
   }
 
-  // ---------------- Helpers ----------------
+  // ---------------------------------------------------------------------------
+  // Token: captura e inyección (nullable-aware, conserva el nombre del header)
+  // ---------------------------------------------------------------------------
 
-  /// Convierte la respuesta esperada a Map<String,dynamic>.
-  /// Lanza NetworkException.badRequest si no se puede convertir o si la respuesta está vacía.
+  static bool _maybeInjectAuthHeader(Map<String, dynamic> headersOut) {
+    // Si el caller ya puso Authorization / x-token / etc., no inyectamos.
+    if (_containsAuthLikeHeader(headersOut)) return false;
+
+    // Token actual (externo o interno)
+    final tokenValue = _currentTokenValue;
+    if (tokenValue == null || tokenValue.isEmpty) return false;
+
+    final headerName = _currentHeaderName ?? _defaultAuthHeaderName;
+
+    // Si vamos a usar Authorization y no tiene "Bearer " y queremos anteponerlo.
+    final value =
+        (headerName.toLowerCase() == 'authorization' &&
+            _defaultPrependBearer &&
+            !tokenValue.toLowerCase().startsWith('bearer '))
+        ? 'Bearer $tokenValue'
+        : tokenValue;
+
+    headersOut[headerName] = value;
+    return true;
+  }
+
+  static bool _containsAuthLikeHeader(Map<String, dynamic> headers) {
+    const cands = [
+      'authorization',
+      'x-token',
+      'x-auth-token',
+      'token',
+      'x-api-key',
+    ];
+    final keys = headers.keys.map((e) => e.toString().toLowerCase());
+    return keys.any(cands.contains);
+  }
+
+  static String? get _currentTokenValue =>
+      _externalTokenValueProvider?.call() ?? _token.value;
+
+  static String? get _currentHeaderName =>
+      _externalTokenHeaderNameProvider?.call() ?? _token.headerName;
+
+  static Future<void> _saveToken(String value, {String? headerName}) async {
+    _token.value = value;
+    if (headerName != null) _token.headerName = headerName;
+    if (_externalTokenValueSaver != null) {
+      await _externalTokenValueSaver!(value);
+    }
+    if (_externalTokenHeaderNameSaver != null) {
+      await _externalTokenHeaderNameSaver!(headerName ?? _token.headerName);
+    }
+  }
+
+  static void _captureTokenFromHeaders(Map<String, List<String>> headers) {
+    const candidates = <String>[
+      'authorization',
+      'Authorization',
+      'x-token',
+      'X-Token',
+      'x-auth-token',
+      'X-Auth-Token',
+      'token',
+      'Token',
+      'set-cookie', // como último recurso
+      'Set-Cookie',
+    ];
+
+    for (final key in candidates) {
+      final values = headers[key];
+      if (values == null || values.isEmpty) continue;
+      final raw = values.first.trim();
+      if (raw.isEmpty) continue;
+
+      if (key.toLowerCase() == 'set-cookie') {
+        // si viene en cookie=token..., no tenemos headerName válido para reenvío
+        // extraer el token y usaremos el defaultHeaderName para inyectar.
+        final token = _extractTokenFromCookie(raw);
+        if (token != null && token.isNotEmpty) {
+          _saveToken(token, headerName: _defaultAuthHeaderName);
+        }
+        return;
+      }
+
+      // Para encabezados explícitos (Authorization/X-Auth-Token/etc.), guardamos el mismo nombre
+      _saveToken(raw, headerName: key);
+      return;
+    }
+  }
+
+  static String? _extractTokenFromCookie(String cookie) {
+    // busca token=...;
+    final parts = cookie.split(';');
+    for (final p in parts) {
+      final kv = p.split('=');
+      if (kv.length == 2 && kv[0].trim().toLowerCase() == 'token') {
+        return kv[1].trim();
+      }
+    }
+    return null;
+  }
+
+  static void _captureTokenFromBody(Map<String, dynamic> body) {
+    const bodyKeys = [
+      'token',
+      'access_token',
+      'accessToken',
+      'jwt',
+      'authorization',
+    ];
+    for (final k in bodyKeys) {
+      if (!body.containsKey(k)) continue;
+      final v = body[k];
+      if (v is String && v.isNotEmpty) {
+        // al venir desde body no sabemos headerName → usamos el default
+        _saveToken(v, headerName: _defaultAuthHeaderName);
+        return;
+      }
+      if (v is Map<String, dynamic>) {
+        for (final k2 in bodyKeys) {
+          final vv = v[k2];
+          if (vv is String && vv.isNotEmpty) {
+            _saveToken(vv, headerName: _defaultAuthHeaderName);
+            return;
+          }
+        }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Helpers comunes
+  // ---------------------------------------------------------------------------
+
   static Json _asJson(dynamic data, Response resp) {
     try {
       if (data == null) {
@@ -333,13 +462,7 @@ class ApiClient {
       if (data is Map<String, dynamic>) return data;
 
       if (data is String) {
-        final trimmed = data.trim();
-        if (trimmed.isEmpty) {
-          throw NetworkException.badRequest(
-            'Respuesta vacía (status=${resp.statusCode})',
-          );
-        }
-        final parsed = jsonDecode(trimmed);
+        final parsed = jsonDecode(data);
         if (parsed is Map<String, dynamic>) return parsed;
         throw NetworkException.badRequest(
           'Se esperaba objeto JSON. String decodifica a ${parsed.runtimeType}',
@@ -347,7 +470,9 @@ class ApiClient {
       }
 
       if (data is Map) {
-        return _toStringKeyedMap(data);
+        return Map<String, dynamic>.from(
+          data.map((k, v) => MapEntry(k.toString(), v)),
+        );
       }
 
       throw NetworkException.badRequest(
@@ -361,145 +486,28 @@ class ApiClient {
     }
   }
 
-  /// Helper: convierte cualquier Map (dynamic) a Map<String, dynamic>
-  /// evitando el uso directo de .map(...) que puede confundir al analyzer.
-  static List<Json> _asJsonList(dynamic data, Response resp) {
-    try {
-      if (data == null) {
-        throw NetworkException.badRequest(
-          'Respuesta vacía (status=${resp.statusCode})',
-        );
-      }
-
-      List<dynamic> rawList;
-      if (data is List) {
-        rawList = data;
-      } else if (data is String) {
-        final trimmed = data.trim();
-        if (trimmed.isEmpty) {
-          throw NetworkException.badRequest(
-            'Respuesta vacía (status=${resp.statusCode})',
-          );
-        }
-        final parsed = jsonDecode(trimmed);
-        if (parsed is List) {
-          rawList = parsed;
-        } else {
-          throw NetworkException.badRequest(
-            'Se esperaba array JSON, se obtuvo ${parsed.runtimeType}',
-          );
-        }
-      } else {
-        throw NetworkException.badRequest(
-          'Se esperaba array JSON, recibido ${data.runtimeType}',
-        );
-      }
-
-      return rawList.map<Json>((e) {
-        if (e is Map<String, dynamic>) return e;
-        if (e is Map) return _toStringKeyedMap(e);
-        throw NetworkException.badRequest(
-          'Elemento de array no es un objeto JSON. Recibido ${e.runtimeType}',
-        );
-      }).toList();
-    } catch (e) {
-      if (e is NetworkException) rethrow;
-      throw NetworkException.badRequest(
-        'No se pudo parsear la respuesta a List<Map>: $e',
-      );
-    }
-  }
-
-  /// Convierte cualquier Map (posible dynamic) a Map<String, String>.
-  /// Útil para queryParameters y para Uri.replace(queryParameters: ...).
-  Map<String, String> _stringifyToStringMap(Map? maybeMap) {
-    final out = <String, String>{};
-    if (maybeMap == null) return out;
-    try {
-      // Si ya es Map<String, String> retorna copia.
-      if (maybeMap is Map<String, String>) {
-        return Map<String, String>.from(maybeMap);
-      }
-      // Si es Map<String, dynamic> o Map<dynamic, dynamic>
-      maybeMap.forEach((k, v) {
-        final key = k?.toString() ?? '';
-        final value = v == null ? '' : v.toString();
-        out[key] = value;
-      });
-    } catch (_) {
-      // En caso de error devolvemos map vacío (no lanzar para no romper la URI builder).
-    }
-    return out;
-  }
-
-  /// Convierte cualquier Map (posible dynamic) a Map<String, dynamic>.
-  /// Útil para normalizar headers u objetos JSON que pueden tener claves no-String.
-  static Map<String, dynamic> _toStringKeyedMap(dynamic maybeMap) {
-    final out = <String, dynamic>{};
-    if (maybeMap is Map<String, dynamic>) {
-      return Map<String, dynamic>.from(maybeMap);
-    }
-    if (maybeMap is Map) {
-      maybeMap.forEach((k, v) {
-        final key = k?.toString() ?? '';
-        out[key] = v;
-      });
-    }
-    return out;
-  }
-
   static Options? _mergeHeaders(Map<String, String>? headers) {
     if (headers == null || headers.isEmpty) return null;
-
-    // Construir merged a mano a partir de _client.options.headers
-    final merged = <String, dynamic>{};
-    try {
-      final original = _client.options.headers;
-      if (original != null) {
-        original.forEach((k, v) {
-          final key = k.toString();
-          if (v != null) merged[key] = v;
-        });
-      }
-    } catch (_) {}
-
-    // Añadir/overrides desde headers param
-    merged.addAll(headers);
-
+    final merged = {
+      ..._client.options.headers.map((k, v) => MapEntry(k.toString(), v)),
+      ...headers,
+    };
     return Options(headers: merged);
   }
 
   static Map<String, String> _finalHeaders(Map<String, String>? headers) {
     final merged = <String, String>{};
-
-    // Copiar headers del cliente (pueden ser dynamic)
-    try {
-      final clientHeaders = _client.options.headers;
-      if (clientHeaders != null) {
-        clientHeaders.forEach((k, v) {
-          if (v != null) merged[k.toString()] = v.toString();
-        });
-      }
-    } catch (_) {}
-
+    _client.options.headers.forEach((k, v) {
+      if (v != null) merged[k.toString()] = v.toString();
+    });
     if (headers != null) merged.addAll(headers);
     merged.putIfAbsent('Content-Type', () => 'application/json');
 
-    final t = _tokenProvider?.call();
-    if (t != null && t.isNotEmpty) {
-      final hasAuth = merged.keys.any(
-        (k) => k.toLowerCase() == 'authorization',
-      );
-      if (!hasAuth) {
-        merged['Authorization'] = t.startsWith('Bearer ') ? t : 'Bearer $t';
-      }
-    }
-
+    // Inyectar auth si procede
+    _maybeInjectAuthHeader(merged);
     return merged;
   }
 
-  /// Revisa que el status code esté en acceptableStatusCodes.
-  /// Si no está, extrae un snippet del body y lanza NetworkException.badRequest con contexto.
   static void _ensureAcceptable<T>(
     Response<T> resp,
     Set<int> acceptableStatusCodes,
@@ -513,8 +521,6 @@ class ApiClient {
       );
     }
   }
-
-  // ---------------- Fallback nativo Android ----------------
 
   static bool _shouldDoNativeFallback(DioException e) {
     final msg = (e.message ?? '').toUpperCase();
@@ -554,16 +560,14 @@ class ApiClient {
     }
     final decoded = jsonDecode(result);
     if (decoded is Map<String, dynamic>) return decoded;
-    if (decoded is String) {
-      final inner = jsonDecode(decoded);
-      if (inner is Map<String, dynamic>) return inner;
-      return _toStringKeyedMap(inner);
-    }
-    return _toStringKeyedMap(decoded);
+    if (decoded is String) return jsonDecode(decoded) as Map<String, dynamic>;
+    return Map<String, dynamic>.from(decoded as Map);
   }
 }
 
-// ---------------- Utilidades compartidas ----------------
+// -----------------------------------------------------------------------------
+// Utilidades compartidas
+// -----------------------------------------------------------------------------
 
 class _ResolvedRequest {
   _ResolvedRequest(this._endpoint);
@@ -645,7 +649,18 @@ Map<String, List<String>> _normalizeHeaders(Headers hdrs) {
   return out;
 }
 
-void _tryCaptureTokenFromHeaders(Map<String, List<String>> headers) {
+// -----------------------------------------------------------------------------
+// Token state interno
+// -----------------------------------------------------------------------------
+class _TokenState {
+  String? value; // puede ser null → no se inyecta
+  String? headerName; // si null, se usa _defaultAuthHeaderName
+}
+
+// -----------------------------------------------------------------------------
+// Captura de token
+// -----------------------------------------------------------------------------
+void _captureTokenFromHeaders(Map<String, List<String>> headers) {
   const candidates = <String>[
     'authorization',
     'Authorization',
@@ -658,30 +673,41 @@ void _tryCaptureTokenFromHeaders(Map<String, List<String>> headers) {
     'set-cookie',
     'Set-Cookie',
   ];
+
   for (final key in candidates) {
     final values = headers[key];
     if (values == null || values.isEmpty) continue;
     final raw = values.first.trim();
     if (raw.isEmpty) continue;
 
-    String toSave = raw;
-    if ((key.toLowerCase() == 'set-cookie' || key.toLowerCase() == 'cookie') &&
-        raw.toLowerCase().contains('token=')) {
-      final parts = raw.split(';');
-      for (final p in parts) {
-        final kv = p.split('=');
-        if (kv.length == 2 && kv[0].trim().toLowerCase() == 'token') {
-          toSave = kv[1].trim();
-          break;
-        }
+    if (key.toLowerCase() == 'set-cookie') {
+      final token = _extractTokenFromCookie(raw);
+      if (token != null && token.isNotEmpty) {
+        ApiClient._saveToken(
+          token,
+          headerName: ApiClient._defaultAuthHeaderName,
+        );
       }
+      return;
     }
-    ApiClient._tokenSaver?.call(toSave);
+
+    ApiClient._saveToken(raw, headerName: key);
     return;
   }
 }
 
-void _tryCaptureTokenFromBody(Map<String, dynamic> body) {
+String? _extractTokenFromCookie(String cookie) {
+  final parts = cookie.split(';');
+  for (final p in parts) {
+    final kv = p.split('=');
+    if (kv.length == 2 && kv[0].trim().toLowerCase() == 'token') {
+      return kv[1].trim();
+    }
+  }
+  return null;
+}
+
+void _captureTokenFromBody(Map<String, dynamic> body) {
   const bodyKeys = [
     'token',
     'access_token',
@@ -693,14 +719,17 @@ void _tryCaptureTokenFromBody(Map<String, dynamic> body) {
     if (!body.containsKey(k)) continue;
     final v = body[k];
     if (v is String && v.isNotEmpty) {
-      ApiClient._tokenSaver?.call(v);
+      ApiClient._saveToken(v, headerName: ApiClient._defaultAuthHeaderName);
       return;
     }
     if (v is Map<String, dynamic>) {
       for (final k2 in bodyKeys) {
         final vv = v[k2];
         if (vv is String && vv.isNotEmpty) {
-          ApiClient._tokenSaver?.call(vv);
+          ApiClient._saveToken(
+            vv,
+            headerName: ApiClient._defaultAuthHeaderName,
+          );
           return;
         }
       }
@@ -708,6 +737,9 @@ void _tryCaptureTokenFromBody(Map<String, dynamic> body) {
   }
 }
 
+// -----------------------------------------------------------------------------
+// Mapeo de errores
+// -----------------------------------------------------------------------------
 NetworkException _mapDioError(DioException e) {
   final status = e.response?.statusCode;
   final method = e.requestOptions.method;
