@@ -22,6 +22,7 @@ class UserInput extends StatefulWidget {
     this.suffixIcon,
     this.padding = const EdgeInsets.all(16),
     this.borderRadius = 10.0,
+    this.autovalidateMode = AutovalidateMode.always,
   });
 
   final String title;
@@ -40,6 +41,7 @@ class UserInput extends StatefulWidget {
   final Widget? suffixIcon;
   final EdgeInsetsGeometry? padding;
   final double borderRadius;
+  final AutovalidateMode? autovalidateMode;
 
   @override
   State<UserInput> createState() => _UserInputState();
@@ -76,6 +78,7 @@ class _UserInputState extends State<UserInput> {
           TextFormField(
             controller: widget.controller,
             validator: widget.validator,
+            autovalidateMode: widget.autovalidateMode,
             obscureText: _obscure,
             keyboardType: widget.keyboardType,
             inputFormatters: widget.inputFormatters,

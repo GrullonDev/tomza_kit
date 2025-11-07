@@ -19,6 +19,7 @@ class UserInputSelector<T> extends StatelessWidget {
     this.itemToString,
     this.padding = const EdgeInsets.all(16),
     this.enabled = true,
+    this.autovalidateMode = AutovalidateMode.always,
   });
 
   final T? value;
@@ -35,6 +36,7 @@ class UserInputSelector<T> extends StatelessWidget {
   final String Function(T)? itemToString;
   final EdgeInsetsGeometry? padding;
   final bool enabled;
+  final AutovalidateMode? autovalidateMode;
 
   @override
   Widget build(BuildContext context) {
@@ -84,7 +86,8 @@ class UserInputSelector<T> extends StatelessWidget {
                 borderSide: const BorderSide(color: Colors.red),
               ),
               filled: true,
-              fillColor: theme.inputDecorationTheme.fillColor ?? theme.cardColor,
+              fillColor:
+                  theme.inputDecorationTheme.fillColor ?? theme.cardColor,
               suffixIcon: const Icon(Icons.keyboard_arrow_down_rounded),
             ),
             style: effectiveTextStyle,
@@ -103,6 +106,7 @@ class UserInputSelector<T> extends StatelessWidget {
             }).toList(),
             onChanged: onChanged,
             validator: validator,
+            autovalidateMode: autovalidateMode,
           ),
         ],
       ),
