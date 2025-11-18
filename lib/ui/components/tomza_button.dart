@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:tomza_kit/tomza_kit.dart';
 
 /// Tamaños disponibles para los botones.
 enum AppButtonSize { dense, regular }
@@ -39,14 +38,13 @@ class TomzaPrimaryButton extends StatelessWidget {
   final bool showLoadingLabel;
   final String loadingLabel;
   final Color? color;
-
-  static const Key spinnerKey = ValueKey('appPrimaryButton_spinner');
-  static const Key loadingLabelKey = ValueKey('appPrimaryButton_loadingLabel');
+  final Key spinnerKey = const ValueKey('appPrimaryButton_spinner');
+  final Key loadingLabelKey = const ValueKey('appPrimaryButton_loadingLabel');
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    final Color backgroundColor = color ?? TomzaColors.primary;
+    final Color backgroundColor = color ?? theme.colorScheme.primary;
     final Color foregroundColor = theme.colorScheme.onPrimary;
 
     final Widget text = Text(
@@ -148,8 +146,10 @@ class TomzaSecondaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    final Color backgroundColor = color ?? theme.colorScheme.surfaceContainerHighest;
-    final Color foregroundColor = color != null ? Colors.white : theme.colorScheme.onSurfaceVariant;
+    final Color backgroundColor = color ?? theme.colorScheme.secondary;
+    final Color foregroundColor = color != null
+        ? Colors.white
+        : theme.colorScheme.onSecondary;
 
     final Widget text = Text(
       label,
@@ -211,7 +211,7 @@ class TomzaTextButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    final Color foregroundColor = color ?? TomzaColors.primary;
+    final Color foregroundColor = color ?? theme.colorScheme.primary;
 
     final Widget text = Text(
       label,
