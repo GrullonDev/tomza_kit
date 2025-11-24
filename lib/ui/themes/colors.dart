@@ -95,10 +95,10 @@ class TomzaColorsOrange {
   TomzaColorsOrange._();
 
   // Colores principales de la marca Tropi - Paleta Azul
-  static const Color primary = Color.fromARGB(255, 255, 98, 13);
-  static const Color dark = Color.fromARGB(255, 255, 74, 0);
-  static const Color light = Color.fromARGB(255, 255, 169, 83);
-  static const Color accent = Color.fromARGB(255, 251, 137, 38);
+  static const Color primary = Color(0xFFFF620D);
+  static const Color dark = Color(0xFFFF4A00);
+  static const Color light = Color(0xFFFFA953);
+  static const Color accent = Color(0xFFFB8926);
 
   // Paleta de grises profesionales
   static const Color darkGrey = Color.fromARGB(255, 36, 36, 36);
@@ -113,10 +113,10 @@ class TomzaColorsOrange {
   static const Color infoBlue = Color(0xFF2196F3);
 
   // Colores para modo oscuro
-  static const Color darkSurface = Color.fromARGB(255, 34, 34, 34);
-  static const Color darkBackground = Color.fromARGB(255, 18, 18, 18);
-  static const Color darkCard = Color.fromARGB(255, 36, 36, 36);
-  static const Color darkPrimary = Color.fromARGB(255, 190, 107, 3);
+  static const Color darkSurface = Color(0xFF1E1E1E);
+  static const Color darkBackground = Color(0xFF121212);
+  static const Color darkCard = Color(0xFF2C2C2C);
+  static const Color darkPrimary = Color(0xFFFF9800);
 
   /// Obtiene el color de estado según el tipo
   static Color getStatusColor(String status) {
