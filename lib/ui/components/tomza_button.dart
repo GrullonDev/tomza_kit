@@ -26,6 +26,8 @@ class TomzaPrimaryButton extends StatelessWidget {
     this.showLoadingLabel = false,
     this.loadingLabel = 'Cargando...',
     this.color,
+    this.height = 20,
+    this.width = 20,
   });
 
   final String label;
@@ -40,6 +42,8 @@ class TomzaPrimaryButton extends StatelessWidget {
   final Color? color;
   final Key spinnerKey = const ValueKey('appPrimaryButton_spinner');
   final Key loadingLabelKey = const ValueKey('appPrimaryButton_loadingLabel');
+  final double? height;
+  final double? width;
 
   @override
   Widget build(BuildContext context) {
@@ -59,8 +63,8 @@ class TomzaPrimaryButton extends StatelessWidget {
     if (isLoading) {
       final Widget spinner = SizedBox(
         key: spinnerKey,
-        width: 20,
-        height: 20,
+        width: width,
+        height: height,
         child: CircularProgressIndicator(
           strokeWidth: 2,
           valueColor: AlwaysStoppedAnimation<Color>(foregroundColor),
