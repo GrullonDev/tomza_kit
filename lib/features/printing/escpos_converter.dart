@@ -60,7 +60,7 @@ class EscPosConverter {
       // 3) Aumentar contraste para texto más nítido
       final im.Image contrasted = im.adjustColor(
         gray,
-        contrast: 1.2, // Incrementar contraste
+        contrast: 1.8, // Incrementar contraste
         brightness: 1.0,
       );
 
