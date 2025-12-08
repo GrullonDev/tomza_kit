@@ -53,33 +53,40 @@ class EscPosConverter {
         );
       }
 
-      // 2) Normalizar imagen (Convertir a Grayscale para garantizar formato consistente)
-      // Esto corrige el problema "All Black" causado por formatos de pixel desconocidos/raw.
+      // 2) Convertir a escala de grises (Normalización)
       final im.Image gray = im.grayscale(processed);
 
-      // 3) Opcional: Ajuste de color suave (solo si es muy necesario, por ahora desactivado para fidelidad)
-      // im.adjustColor(gray, contrast: 1.0); 
+      // 3) Opcional: Ajuste de color suave 
+      // Desactivado para evitar pérdida de detalle en QR con contrast: 1.2
+      // Si es necesario, usar 1.05 o 1.1 máximo.
 
-      // 4) Selección de fuente
-      final im.Image sourceImage;
-      if (useDither) {
-         final im.Image contrasted = im.adjustColor(gray, contrast: 1.1);
-         sourceImage = toMonoDitherFS(contrasted);
-         dev.log('[EscPosConverter] Dithering aplicado.');
-      } else {
-         sourceImage = gray;
-         dev.log('[EscPosConverter] Modo Texto/Logo (Threshold: $threshold).');
-      }
+      // 4) Convertir a 1-bit (blanco y negro)
+      final im.Image bw = useDither
+          ? toMonoDitherFS(im.adjustColor(gray, contrast: 1.1))
+          : _toMonoThreshold(
+              gray,
+              threshold,
+            ); // Umbral (mejor para texto y QR)
 
-      // 5) Construir comandos ESC/POS
+      dev.log(
+        '[EscPosConverter] Conversión a B/N: ${useDither ? "dithering" : "threshold=$threshold"}',
+      );
+
+      // 5) Construir comandos ESC/POS en bandas
       final BytesBuilder bytes = BytesBuilder();
+
+      // Comandos de inicialización
       bytes.add(_escInit());
       bytes.add(_alignLeft());
       bytes.add(<int>[0x1D, 0x21, 0x00]);
 
-      final int width = sourceImage.width;
-      final int height = sourceImage.height;
+      final int width = bw.width;
+      final int height = bw.height;
       final int rowBytes = (width + 7) >> 3;
+
+      dev.log(
+        '[EscPosConverter] Procesando $height filas en bandas de $bandHeight',
+      );
 
       int bandCount = 0;
       for (int y0 = 0; y0 < height; y0 += bandHeight) {
@@ -91,27 +98,22 @@ class EscPosConverter {
         final int yL = bandRows & 0xFF;
         final int yH = (bandRows >> 8) & 0xFF;
 
+        // GS v 0 m - Comando de imagen raster
+        // m=0: modo normal
         bytes.add(<int>[0x1D, 0x76, 0x30, 0x00, xL, xH, yL, yH]);
 
+        // Datos de la banda: MSB=bit izquierdo, 1=negro
+        // bw ya es una imagen donde pixel.r es 0 (negro) o 255 (blanco)
         for (int y = y0; y < yEnd; y++) {
           final Uint8List row = Uint8List(rowBytes);
           int byteIndex = 0;
           int bit = 7;
 
           for (int x = 0; x < width; x++) {
-            final im.Pixel pixel = sourceImage.getPixel(x, y);
-            bool isBlack = false;
-
-            // En grayscale: r=g=b=luminance
-            // Verificamos Alpha para transparencia
-            if (pixel.a < 128) {
-               isBlack = false; // Transparente = Blanco (Papel)
-            } else if (useDither) {
-               isBlack = pixel.r == 0;
-            } else {
-               // Threshold simple
-               isBlack = pixel.r < threshold;
-            }
+            // En _toMonoThreshold ya filtramos el alpha, así que aquí
+            // solo verificamos si es negro (0)
+            final im.Pixel pixel = bw.getPixel(x, y);
+            final bool isBlack = pixel.r == 0;
 
             if (isBlack) {
               row[byteIndex] |= (1 << bit);
@@ -123,6 +125,7 @@ class EscPosConverter {
           }
           bytes.add(row);
         }
+
         bandCount++;
       }
 
@@ -144,9 +147,9 @@ class EscPosConverter {
     }
   }
 
-  /// Conversión a monocromo usando umbral fijo (mejor para texto)
+  /// Conversión a monocromo usando umbral fijo con soporte de transparencia
   /// Valores menores que threshold se convierten a negro (0)
-  /// Valores mayores o iguales se convierten a blanco (255)
+  /// Valores mayores o iguales (o transparentes) se convierten a blanco (255)
   static im.Image _toMonoThreshold(im.Image g, int threshold) {
     final im.Image out = im.Image(
       width: g.width,
@@ -157,9 +160,17 @@ class EscPosConverter {
     for (int y = 0; y < g.height; y++) {
       for (int x = 0; x < g.width; x++) {
         final im.Pixel pixel = g.getPixel(x, y);
-        final num luminance = pixel.r;
+        
+        // Manejo de Transparencia:
+        // Si el pixel es transparente (< 128), lo forzamos a Blanco (255)
+        // Esto evita el cuadro negro en imágenes PNG con alpha.
+        if (pixel.a < 128) {
+           out.setPixelR(x, y, 255);
+           continue;
+        }
 
-        // Aplicar threshold con margen de error para evitar grises
+        final num luminance = pixel.r;
+        // Aplicar threshold
         final int value = luminance < threshold ? 0 : 255;
         out.setPixelR(x, y, value);
       }
