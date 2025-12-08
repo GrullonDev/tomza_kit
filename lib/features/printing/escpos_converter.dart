@@ -20,7 +20,7 @@ class EscPosConverter {
     int maxDotsWidth = 576,
     int bandHeight = 960,
     bool useDither = false,
-    int threshold = 180,
+    int threshold = 128,
     bool appendCut = true,
   }) {
     try {
@@ -37,22 +37,14 @@ class EscPosConverter {
       // 1) Smart Resize: Solo redimensionar si es necesario
       im.Image processed;
       if (decoded.width == maxDotsWidth && (decoded.width % 8 == 0)) {
-         // Ancho exacto y múltiplo de 8 -> Usar original
          processed = decoded;
       } else {
-        // Redimensionar
         int w = math.min(decoded.width, maxDotsWidth);
-        w = (w ~/ 8) * 8; // Redondear hacia abajo al múltiplo de 8 más cercano
-        if (w < 8) {
-          dev.log('[EscPosConverter] Ancho muy pequeño: $w');
-          return Uint8List(0);
-        }
-
+        w = (w ~/ 8) * 8; 
+        if (w < 8) return Uint8List(0);
         final int h = (decoded.height * (w / decoded.width)).round();
         
-        dev.log('[EscPosConverter] ⚠️ Redimensionando imagen de ${decoded.width} a $w. '
-            'Para máximo rendimiento, envíe imágenes ya redimensionadas a $maxDotsWidth px.');
-
+        dev.log('[EscPosConverter] ⚠️ Redimensionando a $w px.');
         processed = im.copyResize(
           decoded,
           width: w,
@@ -61,30 +53,22 @@ class EscPosConverter {
         );
       }
 
-      // 2) Convertir a escala de grises
-      final im.Image gray = im.grayscale(processed);
-
-      // 3) Aumentar contraste para texto más nítido
-      final im.Image contrasted = im.adjustColor(
-        gray,
-        contrast: 1.2,
-        brightness: 1.0,
-      );
-
-      // 4) Preparar fuente B/N (si usa Dither se pre-calcula, si no se hace on-the-fly)
+      // 2) Preparar fuente (Optimizado: Zero-Copy si no usa dither)
       final im.Image sourceImage;
       if (useDither) {
+         // Dithering requiere escala de grises + ajuste previo
+         final im.Image gray = im.grayscale(processed);
+         final im.Image contrasted = im.adjustColor(gray, contrast: 1.1); // Suave contraste
          sourceImage = toMonoDitherFS(contrasted);
          dev.log('[EscPosConverter] Dithering aplicado.');
       } else {
-         sourceImage = contrasted; // Usaremos el umbral al vuelo
-         dev.log('[EscPosConverter] Usando umbral dinámico ($threshold).');
+         // Fast Path: Usamos la imagen original (RGBA) directamente
+         sourceImage = processed;
+         dev.log('[EscPosConverter] Fast Path (Zero-Copy). Threshold: $threshold');
       }
 
-      // 5) Construir comandos ESC/POS en bandas
+      // 3) Construir comandos ESC/POS
       final BytesBuilder bytes = BytesBuilder();
-
-      // Comandos de inicialización
       bytes.add(_escInit());
       bytes.add(_alignLeft());
       bytes.add(<int>[0x1D, 0x21, 0x00]);
@@ -92,10 +76,6 @@ class EscPosConverter {
       final int width = sourceImage.width;
       final int height = sourceImage.height;
       final int rowBytes = (width + 7) >> 3;
-
-      dev.log(
-        '[EscPosConverter] Procesando $height filas en bandas de $bandHeight',
-      );
 
       int bandCount = 0;
       for (int y0 = 0; y0 < height; y0 += bandHeight) {
@@ -107,11 +87,8 @@ class EscPosConverter {
         final int yL = bandRows & 0xFF;
         final int yH = (bandRows >> 8) & 0xFF;
 
-        // GS v 0 m - Comando de imagen raster
-        // m=0: modo normal
         bytes.add(<int>[0x1D, 0x76, 0x30, 0x00, xL, xH, yL, yH]);
 
-        // Datos de la banda: MSB=bit izquierdo, 1=negro
         for (int y = y0; y < yEnd; y++) {
           final Uint8List row = Uint8List(rowBytes);
           int byteIndex = 0;
@@ -119,14 +96,21 @@ class EscPosConverter {
 
           for (int x = 0; x < width; x++) {
             final im.Pixel pixel = sourceImage.getPixel(x, y);
-            bool isBlack;
-            
-            if (useDither) {
-               // Ya es 0 o 255
+            bool isBlack = false;
+
+            // Manejo de transparencia (Alpha)
+            // Si el pixel es transparente (o muy translúcido), es BLANCO (papel).
+            if (pixel.a < 128) {
+               isBlack = false; 
+            } else if (useDither) {
                isBlack = pixel.r == 0;
             } else {
-               // Threshold on-the-fly
-               isBlack = pixel.r < threshold;
+               // On-the-fly luminance
+               // luminanceNormalized devuelve 0.0 (negro) a 1.0 (blanco)
+               // Pero pixel.luminance es 0..255 (aprox)
+               // im.getLuminanceRgb calcula la luminancia percibida
+               final num lum = im.getLuminanceRgb(pixel.r, pixel.g, pixel.b);
+               isBlack = lum < threshold;
             }
 
             if (isBlack) {
@@ -139,7 +123,6 @@ class EscPosConverter {
           }
           bytes.add(row);
         }
-
         bandCount++;
       }
 
