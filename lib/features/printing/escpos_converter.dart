@@ -53,21 +53,25 @@ class EscPosConverter {
         );
       }
 
-      // 2) Preparar fuente (Optimizado: Zero-Copy si no usa dither)
+      // 2) Normalizar imagen (Convertir a Grayscale para garantizar formato consistente)
+      // Esto corrige el problema "All Black" causado por formatos de pixel desconocidos/raw.
+      final im.Image gray = im.grayscale(processed);
+
+      // 3) Opcional: Ajuste de color suave (solo si es muy necesario, por ahora desactivado para fidelidad)
+      // im.adjustColor(gray, contrast: 1.0); 
+
+      // 4) Selección de fuente
       final im.Image sourceImage;
       if (useDither) {
-         // Dithering requiere escala de grises + ajuste previo
-         final im.Image gray = im.grayscale(processed);
-         final im.Image contrasted = im.adjustColor(gray, contrast: 1.1); // Suave contraste
+         final im.Image contrasted = im.adjustColor(gray, contrast: 1.1);
          sourceImage = toMonoDitherFS(contrasted);
          dev.log('[EscPosConverter] Dithering aplicado.');
       } else {
-         // Fast Path: Usamos la imagen original (RGBA) directamente
-         sourceImage = processed;
-         dev.log('[EscPosConverter] Fast Path (Zero-Copy). Threshold: $threshold');
+         sourceImage = gray;
+         dev.log('[EscPosConverter] Modo Texto/Logo (Threshold: $threshold).');
       }
 
-      // 3) Construir comandos ESC/POS
+      // 5) Construir comandos ESC/POS
       final BytesBuilder bytes = BytesBuilder();
       bytes.add(_escInit());
       bytes.add(_alignLeft());
@@ -98,19 +102,15 @@ class EscPosConverter {
             final im.Pixel pixel = sourceImage.getPixel(x, y);
             bool isBlack = false;
 
-            // Manejo de transparencia (Alpha)
-            // Si el pixel es transparente (o muy translúcido), es BLANCO (papel).
+            // En grayscale: r=g=b=luminance
+            // Verificamos Alpha para transparencia
             if (pixel.a < 128) {
-               isBlack = false; 
+               isBlack = false; // Transparente = Blanco (Papel)
             } else if (useDither) {
                isBlack = pixel.r == 0;
             } else {
-               // On-the-fly luminance
-               // luminanceNormalized devuelve 0.0 (negro) a 1.0 (blanco)
-               // Pero pixel.luminance es 0..255 (aprox)
-               // im.getLuminanceRgb calcula la luminancia percibida
-               final num lum = im.getLuminanceRgb(pixel.r, pixel.g, pixel.b);
-               isBlack = lum < threshold;
+               // Threshold simple
+               isBlack = pixel.r < threshold;
             }
 
             if (isBlack) {
