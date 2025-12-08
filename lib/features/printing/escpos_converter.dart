@@ -18,7 +18,7 @@ class EscPosConverter {
   static Uint8List pngToEscPosRaster(
     Uint8List png, {
     int maxDotsWidth = 576,
-    int bandHeight = 256,
+    int bandHeight = 960,
     bool useDither = false,
     int threshold = 180,
     bool appendCut = true,
@@ -34,47 +34,52 @@ class EscPosConverter {
         '[EscPosConverter] Imagen original: ${decoded.width}x${decoded.height}',
       );
 
-      // 1) Resize al ancho máximo y asegurar múltiplo de 8
-      int w = math.min(decoded.width, maxDotsWidth);
-      w = (w ~/ 8) * 8; // Redondear hacia abajo al múltiplo de 8 más cercano
-      if (w < 8) {
-        dev.log('[EscPosConverter] Ancho muy pequeño: $w');
-        return Uint8List(0);
+      // 1) Smart Resize: Solo redimensionar si es necesario
+      im.Image processed;
+      if (decoded.width == maxDotsWidth && (decoded.width % 8 == 0)) {
+         // Ancho exacto y múltiplo de 8 -> Usar original
+         processed = decoded;
+      } else {
+        // Redimensionar
+        int w = math.min(decoded.width, maxDotsWidth);
+        w = (w ~/ 8) * 8; // Redondear hacia abajo al múltiplo de 8 más cercano
+        if (w < 8) {
+          dev.log('[EscPosConverter] Ancho muy pequeño: $w');
+          return Uint8List(0);
+        }
+
+        final int h = (decoded.height * (w / decoded.width)).round();
+        
+        dev.log('[EscPosConverter] ⚠️ Redimensionando imagen de ${decoded.width} a $w. '
+            'Para máximo rendimiento, envíe imágenes ya redimensionadas a $maxDotsWidth px.');
+
+        processed = im.copyResize(
+          decoded,
+          width: w,
+          height: h,
+          interpolation: im.Interpolation.linear,
+        );
       }
 
-      final int h = (decoded.height * (w / decoded.width)).round();
-
-      dev.log('[EscPosConverter] Redimensionando a: ${w}x$h');
-
-      final im.Image resized = im.copyResize(
-        decoded,
-        width: w,
-        height: h,
-        // Lanczos3 da la mejor calidad para texto y gráficos
-        interpolation: im.Interpolation.linear,
-      );
-
       // 2) Convertir a escala de grises
-      final im.Image gray = im.grayscale(resized);
+      final im.Image gray = im.grayscale(processed);
 
       // 3) Aumentar contraste para texto más nítido
       final im.Image contrasted = im.adjustColor(
         gray,
-        contrast: 1.2, // Incrementar contraste
+        contrast: 1.2,
         brightness: 1.0,
       );
 
-      // 4) Convertir a 1-bit (blanco y negro)
-      final im.Image bw = useDither
-          ? toMonoDitherFS(contrasted)
-          : _toMonoThreshold(
-              contrasted,
-              threshold,
-            ); // Umbral (mejor para texto)
-
-      dev.log(
-        '[EscPosConverter] Conversión a B/N: ${useDither ? "dithering" : "threshold=$threshold"}',
-      );
+      // 4) Preparar fuente B/N (si usa Dither se pre-calcula, si no se hace on-the-fly)
+      final im.Image sourceImage;
+      if (useDither) {
+         sourceImage = toMonoDitherFS(contrasted);
+         dev.log('[EscPosConverter] Dithering aplicado.');
+      } else {
+         sourceImage = contrasted; // Usaremos el umbral al vuelo
+         dev.log('[EscPosConverter] Usando umbral dinámico ($threshold).');
+      }
 
       // 5) Construir comandos ESC/POS en bandas
       final BytesBuilder bytes = BytesBuilder();
@@ -84,8 +89,8 @@ class EscPosConverter {
       bytes.add(_alignLeft());
       bytes.add(<int>[0x1D, 0x21, 0x00]);
 
-      final int width = bw.width;
-      final int height = bw.height;
+      final int width = sourceImage.width;
+      final int height = sourceImage.height;
       final int rowBytes = (width + 7) >> 3;
 
       dev.log(
@@ -113,9 +118,17 @@ class EscPosConverter {
           int bit = 7;
 
           for (int x = 0; x < width; x++) {
-            final im.Pixel pixel = bw.getPixel(x, y);
-            // En escala de grises: 0=negro, 255=blanco
-            final bool isBlack = pixel.r == 0;
+            final im.Pixel pixel = sourceImage.getPixel(x, y);
+            bool isBlack;
+            
+            if (useDither) {
+               // Ya es 0 o 255
+               isBlack = pixel.r == 0;
+            } else {
+               // Threshold on-the-fly
+               isBlack = pixel.r < threshold;
+            }
+
             if (isBlack) {
               row[byteIndex] |= (1 << bit);
             }
