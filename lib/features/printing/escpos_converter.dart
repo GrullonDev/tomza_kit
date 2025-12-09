@@ -7,12 +7,62 @@ import 'package:image/image.dart' as im;
 /// Conversor de imágenes PNG a comandos ESC/POS para impresoras térmicas
 /// Optimizado para impresoras Bixolon de 3 pulgadas (576 dots @ 203 DPI)
 class EscPosConverter {
-  /// Convierte PNG a bytes ESC/POS listos para enviar.
+  /// Convierte un PNG a bytes ESC/POS raster (`GS v 0`) listo para enviar.
   ///
-  /// [png]          : PNG bytes de entrada
-  /// [maxDotsWidth] : ancho máximo imprimible (576 para Bixolon 3")
-  /// [bandHeight]   : filas por banda (256 es óptimo para velocidad/memoria)
-  /// Valores mayores o iguales se convierten a blanco (255)
+  /// [png]          : bytes del PNG de entrada.
+  /// [maxDotsWidth] : ancho máximo imprimible (576 para Bixolon 3").
+  /// [bandHeight]   : filas por banda (256 va bien para RAM/velocidad).
+  /// [threshold]    : umbral binario 0–255 (más bajo = impresión más clara).
+  /// [gamma]        : >1 aclara, <1 oscurece (se aplica ANTES del threshold).
+  /// [useDither]    : si true, aplica Floyd–Steinberg (fotos/logos grises).
+  /// [invert]       : si tu impresora imprime invertido, ponlo en true.
+  static Uint8List pngToEscPosRaster(
+    Uint8List png, {
+    int maxDotsWidth = 576,
+    int bandHeight = 256,
+    int threshold = 185,
+    double gamma = 1.0,
+    bool useDither = false,
+    bool invert = false,
+  }) {
+    final im.Image? decoded = im.decodeImage(png);
+    if (decoded == null) {
+      dev.log('[EscPosConverter] decodeImage devolvió null');
+      return Uint8List(0);
+    }
+
+    // 1) Escalar al ancho máximo manteniendo aspecto
+    im.Image img = decoded;
+    if (img.width > maxDotsWidth) {
+      final double scale = maxDotsWidth / img.width;
+      final int newHeight = (img.height * scale).round();
+      img = im.copyResize(
+        img,
+        width: maxDotsWidth,
+        height: newHeight,
+        interpolation: im.Interpolation.cubic,
+      );
+    }
+
+    // 2) Pasar a escala de grises
+    im.Image gray = im.grayscale(img);
+
+    // 3) Ajuste de gamma (gamma > 1 aclara)
+    if (gamma != 1.0) {
+      gray = _applyGamma(gray, gamma);
+    }
+
+    // 4) Binarizar
+    final im.Image mono = useDither
+        ? toMonoDitherFS(gray) // 0 / 255 con dithering
+        : _toMonoThreshold(gray, threshold); // 0 / 255 por umbral
+
+    // 5) Convertir a formato ESC/POS raster (GS v 0) en bandas
+    return _buildRasterBytes(mono, bandHeight: bandHeight, invert: invert);
+  }
+
+  /// Aplica un threshold simple.
+  /// Valores < threshold → negro (0), >= threshold → blanco (255).
   static im.Image _toMonoThreshold(im.Image g, int threshold) {
     final im.Image out = im.Image(
       width: g.width,
@@ -24,10 +74,28 @@ class EscPosConverter {
       for (int x = 0; x < g.width; x++) {
         final im.Pixel pixel = g.getPixel(x, y);
         final num luminance = pixel.r;
-
-        // Aplicar threshold con margen de error para evitar grises
         final int value = luminance < threshold ? 0 : 255;
         out.setPixelR(x, y, value);
+      }
+    }
+
+    return out;
+  }
+
+  /// Ajuste de gamma en escala de grises.
+  /// gamma > 1 aclara, gamma < 1 oscurece.
+  static im.Image _applyGamma(im.Image g, double gamma) {
+    final im.Image out = im.Image.from(g);
+    final double invGamma = 1.0 / gamma;
+
+    for (int y = 0; y < out.height; y++) {
+      for (int x = 0; x < out.width; x++) {
+        final im.Pixel p = out.getPixel(x, y);
+        final double l = p.r.toDouble();
+        final double n = l / 255.0;
+        final double corrected = math.pow(n, invGamma).toDouble();
+        final int v = (corrected * 255.0).round().clamp(0, 255);
+        out.setPixelR(x, y, v);
       }
     }
 
@@ -39,7 +107,6 @@ class EscPosConverter {
   static im.Image toMonoDitherFS(im.Image g) {
     final im.Image out = im.Image.from(g); // Crear copia
 
-    // Aplicar dithering sobre el canal R (que contiene la escala de grises)
     for (int y = 0; y < out.height; y++) {
       for (int x = 0; x < out.width; x++) {
         final im.Pixel pixel = out.getPixel(x, y);
@@ -54,10 +121,10 @@ class EscPosConverter {
         // Distribuir error a píxeles vecinos:
         //     X   7/16
         // 3/16 5/16 1/16
-        addErr(out, x + 1, y, (err * 7) ~/ 16);
-        addErr(out, x - 1, y + 1, (err * 3) ~/ 16);
-        addErr(out, x, y + 1, (err * 5) ~/ 16);
-        addErr(out, x + 1, y + 1, (err * 1) ~/ 16);
+        addErr(out, x + 1, y, (err * 7 ~/ 16));
+        addErr(out, x - 1, y + 1, (err * 3 ~/ 16));
+        addErr(out, x, y + 1, (err * 5 ~/ 16));
+        addErr(out, x + 1, y + 1, (err * 1 ~/ 16));
       }
     }
 
@@ -71,6 +138,66 @@ class EscPosConverter {
     final num currentL = img.getPixel(x, y).r;
     final int newL = (currentL + v).clamp(0, 255) as int;
     img.setPixelR(x, y, newL);
+  }
+
+  /// Construye los comandos ESC/POS raster (`GS v 0`) a partir de una imagen
+  /// ya binarizada (0 = negro, 255 = blanco) en bandas.
+  static Uint8List _buildRasterBytes(
+    im.Image mono, {
+    int bandHeight = 256,
+    bool invert = false,
+  }) {
+    final BytesBuilder bb = BytesBuilder();
+
+    bb.add(_escInit());
+    bb.add(_alignLeft());
+
+    final int width = mono.width;
+    final int height = mono.height;
+    final int bytesPerRow = (width + 7) ~/ 8;
+    if (bandHeight <= 0) bandHeight = height;
+
+    for (int bandY = 0; bandY < height; bandY += bandHeight) {
+      final int rows = math.min(bandHeight, height - bandY);
+
+      // GS v 0 m xL xH yL yH
+      bb.add(<int>[
+        0x1D,
+        0x76,
+        0x30,
+        0x00, // m = 0 (normal)
+        bytesPerRow & 0xFF,
+        (bytesPerRow >> 8) & 0xFF,
+        rows & 0xFF,
+        (rows >> 8) & 0xFF,
+      ]);
+
+      for (int y = 0; y < rows; y++) {
+        final int yy = bandY + y;
+        for (int bx = 0; bx < bytesPerRow; bx++) {
+          int b = 0;
+          for (int bit = 0; bit < 8; bit++) {
+            final int x = bx * 8 + bit;
+            if (x >= width) continue;
+
+            final int l = mono.getPixel(x, yy).r.toInt();
+            bool isBlack = l == 0;
+            if (invert) isBlack = !isBlack;
+
+            if (isBlack) {
+              // bit más significativo = píxel más a la izquierda
+              b |= (0x80 >> bit);
+            }
+          }
+          bb.addByte(b);
+        }
+      }
+    }
+
+    // Unos feeds al final para asegurar salida completa del papel
+    bb.add(_lineFeed(count: 3));
+
+    return bb.toBytes();
   }
 
   // === Comandos ESC/POS básicos ===
@@ -97,9 +224,7 @@ class EscPosConverter {
   ];
 
   /// LF - Line feed (nueva línea)
-  static List<int> _lineFeed({int count = 1}) => List.filled(count, 0x0A);
-
-  // === Métodos de utilidad adicionales ===
+  static List<int> _lineFeed({int count = 1}) => List<int>.filled(count, 0x0A);
 
   /// Crear comando ESC/POS para imprimir texto plano
   static Uint8List textToEscPos(
@@ -115,14 +240,17 @@ class EscPosConverter {
     // Inicializar
     bytes.add(_escInit());
 
-    // Alineación
+    // Alineación  (arreglado: sin fall-through)
     switch (alignment.toLowerCase()) {
       case 'center':
         bytes.add(_alignCenter());
+        break;
       case 'right':
         bytes.add(_alignRight());
+        break;
       default:
         bytes.add(_alignLeft());
+        break;
     }
 
     // Negrita: ESC E 1
