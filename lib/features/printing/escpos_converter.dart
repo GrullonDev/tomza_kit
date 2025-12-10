@@ -36,7 +36,7 @@ class EscPosConverter {
 
       // 1) Resize al ancho máximo y asegurar múltiplo de 8
       int w = math.min(decoded.width, maxDotsWidth);
-      w = (w ~/ 8) * 8; // Redondear hacia abajo al múltiplo de 8 más cercano
+      w = w - (w % 8); // Redondear hacia abajo al múltiplo de 8 más cercano
       if (w < 8) {
         dev.log('[EscPosConverter] Ancho muy pequeño: $w');
         return Uint8List(0);
@@ -50,8 +50,8 @@ class EscPosConverter {
         decoded,
         width: w,
         height: h,
-        // Lanczos3 da la mejor calidad para texto y gráficos
-        interpolation: im.Interpolation.linear,
+        // Lanczos3 no está disponible, cubic es la mejor alternativa integrada
+        interpolation: im.Interpolation.cubic,
       );
 
       // 2) Convertir a escala de grises
@@ -82,11 +82,11 @@ class EscPosConverter {
       // Comandos de inicialización
       bytes.add(_escInit());
       bytes.add(_alignLeft());
-      bytes.add(<int>[0x1D, 0x21, 0x00]);
+      // Eliminado GS ! 0x00 para imágenes ya que no es necesario y ahorra bytes
 
       final int width = bw.width;
       final int height = bw.height;
-      final int rowBytes = (width + 7) >> 3;
+      final int rowBytes = width ~/ 8; // width ya es múltiplo de 8
 
       dev.log(
         '[EscPosConverter] Procesando $height filas en bandas de $bandHeight',
@@ -257,10 +257,13 @@ class EscPosConverter {
     switch (alignment.toLowerCase()) {
       case 'center':
         bytes.add(_alignCenter());
+        break;
       case 'right':
         bytes.add(_alignRight());
+        break;
       default:
         bytes.add(_alignLeft());
+        break;
     }
 
     // Negrita: ESC E 1
@@ -316,7 +319,9 @@ class EscPosConverter {
         'width': decoded.width,
         'height': decoded.height,
         'willResize': decoded.width > maxDotsWidth,
-        'finalWidth': math.min(decoded.width, maxDotsWidth),
+        'finalWidth':
+            math.min(decoded.width, maxDotsWidth) -
+            (math.min(decoded.width, maxDotsWidth) % 8),
         'finalHeight': decoded.width > maxDotsWidth
             ? (decoded.height * (maxDotsWidth / decoded.width)).round()
             : decoded.height,

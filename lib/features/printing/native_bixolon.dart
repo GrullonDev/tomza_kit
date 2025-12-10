@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import 'package:image/image.dart' as im;
 
-import 'package:tomza_kit/core/network/api_client.dart';
 import 'package:tomza_kit/features/printing/escpos_converter.dart';
 
 /// Bridge para comunicarse con el SDK nativo de Bixolon en Android
@@ -46,7 +45,7 @@ class NativeBixolon {
 
   static Future<List<int>?> renderPdfToPrinterBytesWithOptions(
     String filePath,
-    Json options,
+    Map<String, dynamic> options,
   ) async {
     try {
       dev.log('[NativeBixolon] renderPdfToPrinterBytesWithOptions: $filePath');
@@ -106,7 +105,7 @@ class NativeBixolon {
     }
   }
 
-  static Future<Json?> printPdfNative(String filePath) async {
+  static Future<Map<String, dynamic>?> printPdfNative(String filePath) async {
     try {
       dev.log('[NativeBixolon] printPdfNative: $filePath');
 
@@ -121,7 +120,7 @@ class NativeBixolon {
       }
 
       if (res is Map) {
-        final Map<String, dynamic> result = Json.from(
+        final Map<String, dynamic> result = Map<String, dynamic>.from(
           res.cast<String, dynamic>(),
         );
         dev.log('[NativeBixolon] printPdfNative result: $result');
@@ -145,9 +144,9 @@ class NativeBixolon {
     }
   }
 
-  static Future<Json?> printPdfWithOptions(
+  static Future<Map<String, dynamic>?> printPdfWithOptions(
     String filePath,
-    Json options,
+    Map<String, dynamic> options,
   ) async {
     try {
       dev.log('[NativeBixolon] printPdfWithOptions: $filePath');
@@ -163,7 +162,7 @@ class NativeBixolon {
         return null;
       }
       if (res is Map) {
-        final Map<String, dynamic> result = Json.from(
+        final Map<String, dynamic> result = Map<String, dynamic>.from(
           res.cast<String, dynamic>(),
         );
         dev.log('[NativeBixolon] printPdfWithOptions result: $result');
@@ -198,7 +197,7 @@ class NativeBixolon {
 
   static Future<Uint8List?> convertPdfToImage(
     String filePath, {
-    Json? options,
+    Map<String, dynamic>? options,
   }) async {
     try {
       dev.log('[NativeBixolon] convertPdfToImage: $filePath');
@@ -223,10 +222,10 @@ class NativeBixolon {
     }
   }
 
-  static Future<Json?> printPdfToBixolonOverBt(
+  static Future<Map<String, dynamic>?> printPdfToBixolonOverBt(
     String filePath,
     String address, {
-    Json? options,
+    Map<String, dynamic>? options,
   }) async {
     try {
       final Map<String, dynamic> merged = <String, dynamic>{
@@ -253,7 +252,7 @@ class NativeBixolon {
         },
       );
       if (res is Map) {
-        return Json.from(res.cast<String, dynamic>());
+        return Map<String, dynamic>.from(res.cast<String, dynamic>());
       }
       return <String, dynamic>{
         'success': false,
@@ -271,10 +270,10 @@ class NativeBixolon {
 
   /// Convierte el PDF a imagen (nativo) y envía esa imagen a la impresora por Bluetooth
   /// usando comandos ESC/POS raster.
-  static Future<Json?> printPdfAsImageOverBt(
+  static Future<Map<String, dynamic>?> printPdfAsImageOverBt(
     String filePath,
     String address, {
-    Json? options,
+    Map<String, dynamic>? options,
   }) async {
     try {
       dev.log('[NativeBixolon] printPdfAsImageOverBt: $filePath -> $address');
@@ -337,6 +336,65 @@ class NativeBixolon {
     }
   }
 
+  /// Imprime bytes PNG directo (sin pasar por conversión PDF)
+  static Future<Map<String, dynamic>?> printPngImageOverBt(
+    Uint8List pngBytes,
+    String address, {
+    Map<String, dynamic>? options,
+  }) async {
+    try {
+      dev.log(
+        '[NativeBixolon] printPngImageOverBt: ${pngBytes.length} bytes -> $address',
+      );
+
+      // 1) Conversión a ESC/POS
+      final int threshold = (options?['threshold'] as int?) ?? 215;
+      final int maxDotsWidth = (options?['printWidth'] as int?) ?? 576;
+      final bool useDither = (() {
+        final dynamic d = options?['dither'];
+        if (d is String) return d.toLowerCase() == 'floyd';
+        return false;
+      })();
+
+      final Uint8List escpos = EscPosConverter.pngToEscPosRaster(
+        pngBytes,
+        maxDotsWidth: maxDotsWidth,
+        threshold: threshold,
+        useDither: useDither,
+      );
+
+      if (escpos.isEmpty) {
+        return <String, dynamic>{
+          'success': false,
+          'message': 'failed to build ESC/POS payload',
+        };
+      }
+
+      // 2) Enviar por BT
+      final int chunkSize = (options?['chunkSize'] as int?) ?? 256;
+      final int delayMs = (options?['interChunkDelayMs'] as int?) ?? 20;
+
+      final bool ok = await _sendBt(
+        address,
+        escpos,
+        chunkSize: chunkSize,
+        delayMs: delayMs,
+      );
+
+      return <String, dynamic>{
+        'success': ok,
+        'message': ok ? 'sent' : 'bt send failed',
+      };
+    } catch (e, st) {
+      dev.log(
+        '[NativeBixolon] printPngImageOverBt error: $e',
+        error: e,
+        stackTrace: st,
+      );
+      return <String, dynamic>{'success': false, 'message': 'exception: $e'};
+    }
+  }
+
   static Future<bool> _sendBt(
     String address,
     Uint8List payload, {
@@ -359,9 +417,9 @@ class NativeBixolon {
         offset = end;
       }
 
-      // Feed 3 lines al final (ESC d n)
-      connection.output.add(Uint8List.fromList(<int>[0x1B, 0x64, 0x03]));
-      await connection.output.allSent;
+      // Feed removido para evitar doble avance (el conversor ya incluye feed/cut)
+      // connection.output.add(Uint8List.fromList(<int>[0x1B, 0x64, 0x03]));
+      // await connection.output.allSent;
 
       await Future.delayed(const Duration(milliseconds: 150));
 
@@ -384,10 +442,10 @@ class NativeBixolon {
     }
   }
 
-  static Future<Json?> printTextOverBt(
+  static Future<Map<String, dynamic>?> printTextOverBt(
     String address, {
     required String text,
-    Json? options,
+    Map<String, dynamic>? options,
   }) async {
     try {
       final res = await _channel.invokeMethod<dynamic>(
@@ -407,7 +465,7 @@ class NativeBixolon {
           },
         },
       );
-      if (res is Map) return Json.from(res);
+      if (res is Map) return Map<String, dynamic>.from(res);
       return <String, dynamic>{
         'success': false,
         'message': 'unexpected native response',
@@ -437,10 +495,10 @@ class NativeBixolon {
     }
   }
 
-  static Future<Json?> printTextAsImageOverBt(
+  static Future<Map<String, dynamic>?> printTextAsImageOverBt(
     String address, {
     required String text,
-    Json? options,
+    Map<String, dynamic>? options,
   }) async {
     try {
       final res = await _channel.invokeMethod<dynamic>(
@@ -462,7 +520,7 @@ class NativeBixolon {
           },
         },
       );
-      if (res is Map) return Json.from(res);
+      if (res is Map) return Map<String, dynamic>.from(res);
       return <String, dynamic>{
         'success': false,
         'message': 'unexpected native response',
@@ -477,7 +535,7 @@ class NativeBixolon {
     }
   }
 
-  static Future<Json?> getSdkInfo() async {
+  static Future<Map<String, dynamic>?> getSdkInfo() async {
     try {
       dev.log('[NativeBixolon] getSdkInfo');
 
@@ -486,7 +544,7 @@ class NativeBixolon {
       if (res == null) return null;
 
       if (res is Map) {
-        return Json.from(res.cast<String, dynamic>());
+        return Map<String, dynamic>.from(res.cast<String, dynamic>());
       }
 
       return null;
