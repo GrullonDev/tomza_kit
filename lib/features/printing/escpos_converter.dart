@@ -86,51 +86,55 @@ class EscPosConverter {
 
       final int width = bw.width;
       final int height = bw.height;
-      final int rowBytes = width ~/ 8; // width ya es múltiplo de 8
 
       dev.log(
-        '[EscPosConverter] Procesando $height filas en bandas de $bandHeight',
+        '[EscPosConverter] Procesando $height filas en bandas de 24 puntos (ESC *)',
       );
 
+      // ESC * procesa la imagen en bandas verticales de 24 puntos
+      // Este es el método más compatible con todas las impresoras térmicas
+      const int bandHeight24 = 24;
       int bandCount = 0;
-      for (int y0 = 0; y0 < height; y0 += bandHeight) {
-        final int yEnd = math.min(y0 + bandHeight, height);
-        final int bandRows = yEnd - y0;
 
-        final int xL = rowBytes & 0xFF;
-        final int xH = (rowBytes >> 8) & 0xFF;
-        final int yL = bandRows & 0xFF;
-        final int yH = (bandRows >> 8) & 0xFF;
+      for (int y0 = 0; y0 < height; y0 += bandHeight24) {
+        final int yEnd = math.min(y0 + bandHeight24, height);
+        final int actualBandHeight = yEnd - y0;
 
-        // GS v 0 m - Comando de imagen raster
-        // m=0: modo normal
-        bytes.add(<int>[0x1D, 0x76, 0x30, 0x00, xL, xH, yL, yH]);
+        // ESC * m nL nH d1...dk
+        // m = 33 (modo 24 puntos doble densidad)
+        // nL, nH = ancho en bytes (little-endian)
+        final int nL = width & 0xFF;
+        final int nH = (width >> 8) & 0xFF;
 
-        // Datos de la banda: MSB=bit izquierdo, 1=negro
-        for (int y = y0; y < yEnd; y++) {
-          final Uint8List row = Uint8List(rowBytes);
-          int byteIndex = 0;
-          int bit = 7;
+        bytes.add(<int>[0x1B, 0x2A, 33, nL, nH]);
 
-          for (int x = 0; x < width; x++) {
+        // Procesar cada columna vertical (de arriba hacia abajo)
+        for (int x = 0; x < width; x++) {
+          // Cada columna tiene 3 bytes (24 bits)
+          final List<int> column = [0, 0, 0];
+
+          for (int dy = 0; dy < actualBandHeight; dy++) {
+            final int y = y0 + dy;
             final im.Pixel pixel = bw.getPixel(x, y);
-            // En escala de grises: 0=negro, 255=blanco
+            // 0=negro, 255=blanco
             final bool isBlack = pixel.r == 0;
+
             if (isBlack) {
-              row[byteIndex] |= (1 << bit);
-            }
-            if (--bit < 0) {
-              bit = 7;
-              byteIndex++;
+              final int byteIndex = dy ~/ 8; // 0, 1, o 2
+              final int bitIndex = dy % 8;
+              column[byteIndex] |= (1 << (7 - bitIndex));
             }
           }
-          bytes.add(row);
+
+          bytes.add(column);
         }
 
+        // Avanzar línea después de cada banda
+        bytes.add(<int>[0x0A]);
         bandCount++;
       }
 
-      dev.log('[EscPosConverter] Procesadas $bandCount bandas');
+      dev.log('[EscPosConverter] Procesadas $bandCount bandas de 24 puntos');
 
       // 6) Alimentación y corte
       bytes.add(<int>[0x0A, 0x0A, 0x0A, 0x0A]);
