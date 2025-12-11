@@ -39,6 +39,8 @@ export 'features/notifications/local_notifications.dart';
 export 'features/printing/escpos_converter.dart';
 export 'features/printing/native_bixolon.dart';
 export 'features/printing/print_models.dart';
+export 'features/printing/thermal_optimizer.dart';
+export 'features/printing/thermal_pdf_generator.dart';
 export 'features/printing/widgets/print_button.dart';
 export 'features/printing/widgets/ticket_preview.dart';
 

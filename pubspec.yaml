@@ -39,6 +39,8 @@ dependencies:
   dartz: ^0.10.1
   image: ^4.5.4
   flutter_bluetooth_serial: ^0.4.0
+  pdf: ^3.11.0
+  printing: ^5.13.4
 
 dev_dependencies:
   flutter_test:
@@ -52,3 +54,9 @@ dev_dependencies:
 flutter:
   # Como librería, no requiere configuración especial aquí de assets inicialmente.
   uses-material-design: true
+  
+  fonts:
+    - family: RobotoMonoBold
+      fonts:
+        - asset: assets/fonts/RobotoMono-Bold.ttf
+          weight: 700
