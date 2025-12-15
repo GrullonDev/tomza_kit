@@ -23,6 +23,9 @@ class UserInput extends StatefulWidget {
     this.padding = const EdgeInsets.all(16),
     this.borderRadius = 10.0,
     this.autovalidateMode = AutovalidateMode.always,
+    this.fontSize = 16,
+    this.fontWeight = FontWeight.bold,
+    this.color = Colors.black,
   });
 
   final String title;
@@ -42,6 +45,9 @@ class UserInput extends StatefulWidget {
   final EdgeInsetsGeometry? padding;
   final double borderRadius;
   final AutovalidateMode? autovalidateMode;
+  final double fontSize;
+  final FontWeight fontWeight;
+  final Color color;
 
   @override
   State<UserInput> createState() => _UserInputState();
@@ -131,6 +137,11 @@ class _UserInputState extends State<UserInput> {
                 borderRadius: BorderRadius.circular(widget.borderRadius),
                 borderSide: const BorderSide(color: Colors.red),
               ),
+            ),
+            style: GoogleFonts.zenAntiqueSoft(
+              color: widget.color,
+              fontSize: widget.fontSize,
+              fontWeight: widget.fontWeight,
             ),
           ),
         ],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class TomzaGradientButton extends StatefulWidget {
   const TomzaGradientButton({
@@ -9,6 +10,9 @@ class TomzaGradientButton extends StatefulWidget {
     this.borderRadius = 16,
     this.isLoading = false,
     this.gradient,
+    this.color,
+    this.fontSize = 16,
+    this.fontWeight = FontWeight.bold,
   });
 
   final VoidCallback? onPressed;
@@ -17,6 +21,9 @@ class TomzaGradientButton extends StatefulWidget {
   final double borderRadius;
   final bool isLoading;
   final Gradient? gradient;
+  final Color? color;
+  final double fontSize;
+  final FontWeight fontWeight;
 
   @override
   State<TomzaGradientButton> createState() => _TomzaGradientButtonState();
@@ -32,11 +39,13 @@ class _TomzaGradientButtonState extends State<TomzaGradientButton> {
 
   @override
   Widget build(BuildContext context) {
-    final gradient = widget.gradient ?? const LinearGradient(
-      colors: [Color(0xFF0C2340), Color(0xFF4FC3F7)],
-      begin: Alignment.centerLeft,
-      end: Alignment.centerRight,
-    );
+    final gradient =
+        widget.gradient ??
+        const LinearGradient(
+          colors: [Color(0xFF0C2340), Color(0xFF4FC3F7)],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        );
 
     return GestureDetector(
       onTapDown: (_) => _setPressed(true),
@@ -77,10 +86,10 @@ class _TomzaGradientButtonState extends State<TomzaGradientButton> {
                   )
                 : DefaultTextStyle(
                     key: const ValueKey('text'),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
+                    style: GoogleFonts.zenAntiqueSoft(
+                      color: widget.color,
+                      fontSize: widget.fontSize,
+                      fontWeight: widget.fontWeight,
                     ),
                     child: widget.child,
                   ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 /// Tamaños disponibles para los botones.
 enum AppButtonSize { dense, regular }
@@ -28,6 +29,8 @@ class TomzaPrimaryButton extends StatelessWidget {
     this.color,
     this.height = 20,
     this.width = 20,
+    this.fontSize = 16,
+    this.fontWeight = FontWeight.bold,
   });
 
   final String label;
@@ -44,6 +47,8 @@ class TomzaPrimaryButton extends StatelessWidget {
   final Key loadingLabelKey = const ValueKey('appPrimaryButton_loadingLabel');
   final double? height;
   final double? width;
+  final double fontSize;
+  final FontWeight fontWeight;
 
   @override
   Widget build(BuildContext context) {
@@ -53,9 +58,10 @@ class TomzaPrimaryButton extends StatelessWidget {
 
     final Widget text = Text(
       label,
-      style: theme.textTheme.labelLarge?.copyWith(
-        fontWeight: FontWeight.w600,
-        color: foregroundColor,
+      style: GoogleFonts.zenAntiqueSoft(
+        color: color,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
       ),
     );
 
@@ -79,9 +85,10 @@ class TomzaPrimaryButton extends StatelessWidget {
             Text(
               loadingLabel,
               key: loadingLabelKey,
-              style: theme.textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: foregroundColor,
+              style: GoogleFonts.zenAntiqueSoft(
+                color: color,
+                fontSize: fontSize,
+                fontWeight: fontWeight,
               ),
             ),
           ],
@@ -138,6 +145,8 @@ class TomzaSecondaryButton extends StatelessWidget {
     this.expand = false,
     this.size = AppButtonSize.regular,
     this.color,
+    this.fontSize = 16,
+    this.fontWeight = FontWeight.bold,
   });
 
   final String label;
@@ -146,6 +155,8 @@ class TomzaSecondaryButton extends StatelessWidget {
   final bool expand;
   final AppButtonSize size;
   final Color? color;
+  final double fontSize;
+  final FontWeight fontWeight;
 
   @override
   Widget build(BuildContext context) {
@@ -157,9 +168,10 @@ class TomzaSecondaryButton extends StatelessWidget {
 
     final Widget text = Text(
       label,
-      style: theme.textTheme.labelLarge?.copyWith(
-        fontWeight: FontWeight.w600,
+      style: GoogleFonts.zenAntiqueSoft(
         color: foregroundColor,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
       ),
     );
 
@@ -204,6 +216,8 @@ class TomzaTextButton extends StatelessWidget {
     this.icon,
     this.size = AppButtonSize.regular,
     this.color,
+    this.fontSize = 16,
+    this.fontWeight = FontWeight.bold,
   });
 
   final String label;
@@ -211,6 +225,8 @@ class TomzaTextButton extends StatelessWidget {
   final IconData? icon;
   final AppButtonSize size;
   final Color? color;
+  final double fontSize;
+  final FontWeight fontWeight;
 
   @override
   Widget build(BuildContext context) {
@@ -219,9 +235,10 @@ class TomzaTextButton extends StatelessWidget {
 
     final Widget text = Text(
       label,
-      style: theme.textTheme.labelLarge?.copyWith(
-        fontWeight: FontWeight.w600,
+      style: GoogleFonts.zenAntiqueSoft(
         color: foregroundColor,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
       ),
     );
 

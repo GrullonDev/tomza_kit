@@ -25,27 +25,119 @@ class EscPosConverter {
     bool useDither = false,
     bool invert = false,
   }) {
-    final im.Image? decoded = im.decodeImage(png);
-    if (decoded == null) {
-      dev.log('[EscPosConverter] decodeImage devolvió null');
-      return Uint8List(0);
-    }
+    try {
+      final im.Image? decoded = im.decodeImage(png);
+      if (decoded == null) {
+        dev.log('[EscPosConverter] No se pudo decodificar PNG');
+        return Uint8List(0);
+      }
 
-    // 1) Escalar al ancho máximo manteniendo aspecto
-    im.Image img = decoded;
-    if (img.width > maxDotsWidth) {
-      final double scale = maxDotsWidth / img.width;
-      final int newHeight = (img.height * scale).round();
-      img = im.copyResize(
-        img,
-        width: maxDotsWidth,
-        height: newHeight,
+      dev.log(
+        '[EscPosConverter] Imagen original: ${decoded.width}x${decoded.height}',
+      );
+
+      // 1) Resize al ancho máximo y asegurar múltiplo de 8
+      int w = math.min(decoded.width, maxDotsWidth);
+      w = w - (w % 8); // Redondear hacia abajo al múltiplo de 8 más cercano
+      if (w < 8) {
+        dev.log('[EscPosConverter] Ancho muy pequeño: $w');
+        return Uint8List(0);
+      }
+
+      final int h = (decoded.height * (w / decoded.width)).round();
+
+      dev.log('[EscPosConverter] Redimensionando a: ${w}x$h');
+
+      final im.Image resized = im.copyResize(
+        decoded,
+        width: w,
+        height: h,
+        // Lanczos3 no está disponible, cubic es la mejor alternativa integrada
         interpolation: im.Interpolation.cubic,
+      );
+
+      // 2) Convertir a escala de grises
+      final im.Image gray = im.grayscale(resized);
+
+      // 3) Aumentar contraste para texto más nítido
+      final im.Image contrasted = im.adjustColor(
+        gray,
+        contrast: 1.2, // Incrementar contraste
+        brightness: 1.0,
+      );
+
+      // 4) Convertir a 1-bit (blanco y negro)
+      final im.Image bw = useDither
+          ? toMonoDitherFS(contrasted)
+          : _toMonoThreshold(
+              contrasted,
+              threshold,
+            ); // Umbral (mejor para texto)
+
+      dev.log(
+        '[EscPosConverter] Conversión a B/N: ${useDither ? "dithering" : "threshold=$threshold"}',
+      );
+
+      // 5) Construir comandos ESC/POS en bandas
+      final BytesBuilder bytes = BytesBuilder();
+
+      // Comandos de inicialización
+      bytes.add(_escInit());
+      bytes.add(_alignLeft());
+      // Eliminado GS ! 0x00 para imágenes ya que no es necesario y ahorra bytes
+
+      final int width = bw.width;
+      final int height = bw.height;
+
+      dev.log(
+        '[EscPosConverter] Procesando $height filas en bandas de 24 puntos (ESC *)',
       );
     }
 
-    // 2) Pasar a escala de grises
-    im.Image gray = im.grayscale(img);
+      // ESC * procesa la imagen en bandas verticales de 24 puntos
+      // Este es el método más compatible con todas las impresoras térmicas
+      const int bandHeight24 = 24;
+      int bandCount = 0;
+
+      for (int y0 = 0; y0 < height; y0 += bandHeight24) {
+        final int yEnd = math.min(y0 + bandHeight24, height);
+        final int actualBandHeight = yEnd - y0;
+
+        // ESC * m nL nH d1...dk
+        // m = 33 (modo 24 puntos doble densidad)
+        // nL, nH = ancho en bytes (little-endian)
+        final int nL = width & 0xFF;
+        final int nH = (width >> 8) & 0xFF;
+
+        bytes.add(<int>[0x1B, 0x2A, 33, nL, nH]);
+
+        // Procesar cada columna vertical (de arriba hacia abajo)
+        for (int x = 0; x < width; x++) {
+          // Cada columna tiene 3 bytes (24 bits)
+          final List<int> column = [0, 0, 0];
+
+          for (int dy = 0; dy < actualBandHeight; dy++) {
+            final int y = y0 + dy;
+            final im.Pixel pixel = bw.getPixel(x, y);
+            // 0=negro, 255=blanco
+            final bool isBlack = pixel.r == 0;
+
+            if (isBlack) {
+              final int byteIndex = dy ~/ 8; // 0, 1, o 2
+              final int bitIndex = dy % 8;
+              column[byteIndex] |= (1 << (7 - bitIndex));
+            }
+          }
+
+          bytes.add(column);
+        }
+
+        // Avanzar línea después de cada banda
+        bytes.add(<int>[0x0A]);
+        bandCount++;
+      }
+
+      dev.log('[EscPosConverter] Procesadas $bandCount bandas de 24 puntos');
 
     // 3) Ajuste de gamma (gamma > 1 aclara)
     if (gamma != 1.0) {
@@ -306,7 +398,9 @@ class EscPosConverter {
         'width': decoded.width,
         'height': decoded.height,
         'willResize': decoded.width > maxDotsWidth,
-        'finalWidth': math.min(decoded.width, maxDotsWidth),
+        'finalWidth':
+            math.min(decoded.width, maxDotsWidth) -
+            (math.min(decoded.width, maxDotsWidth) % 8),
         'finalHeight': decoded.width > maxDotsWidth
             ? (decoded.height * (maxDotsWidth / decoded.width)).round()
             : decoded.height,
