@@ -57,100 +57,24 @@ class EscPosConverter {
       );
 
       // 2) Convertir a escala de grises
-      final im.Image gray = im.grayscale(resized);
+      im.Image gray = im.grayscale(resized);
 
-      // 3) Aumentar contraste para texto más nítido
-      final im.Image contrasted = im.adjustColor(
-        gray,
-        contrast: 1.2, // Incrementar contraste
-        brightness: 1.0,
-      );
-
-      // 4) Convertir a 1-bit (blanco y negro)
-      final im.Image bw = useDither
-          ? toMonoDitherFS(contrasted)
-          : _toMonoThreshold(
-              contrasted,
-              threshold,
-            ); // Umbral (mejor para texto)
-
-      dev.log(
-        '[EscPosConverter] Conversión a B/N: ${useDither ? "dithering" : "threshold=$threshold"}',
-      );
-
-      // 5) Construir comandos ESC/POS en bandas
-      final BytesBuilder bytes = BytesBuilder();
-
-      // Comandos de inicialización
-      bytes.add(_escInit());
-      bytes.add(_alignLeft());
-      // Eliminado GS ! 0x00 para imágenes ya que no es necesario y ahorra bytes
-
-      final int width = bw.width;
-      final int height = bw.height;
-
-      dev.log(
-        '[EscPosConverter] Procesando $height filas en bandas de 24 puntos (ESC *)',
-      );
-    }
-
-      // ESC * procesa la imagen en bandas verticales de 24 puntos
-      // Este es el método más compatible con todas las impresoras térmicas
-      const int bandHeight24 = 24;
-      int bandCount = 0;
-
-      for (int y0 = 0; y0 < height; y0 += bandHeight24) {
-        final int yEnd = math.min(y0 + bandHeight24, height);
-        final int actualBandHeight = yEnd - y0;
-
-        // ESC * m nL nH d1...dk
-        // m = 33 (modo 24 puntos doble densidad)
-        // nL, nH = ancho en bytes (little-endian)
-        final int nL = width & 0xFF;
-        final int nH = (width >> 8) & 0xFF;
-
-        bytes.add(<int>[0x1B, 0x2A, 33, nL, nH]);
-
-        // Procesar cada columna vertical (de arriba hacia abajo)
-        for (int x = 0; x < width; x++) {
-          // Cada columna tiene 3 bytes (24 bits)
-          final List<int> column = [0, 0, 0];
-
-          for (int dy = 0; dy < actualBandHeight; dy++) {
-            final int y = y0 + dy;
-            final im.Pixel pixel = bw.getPixel(x, y);
-            // 0=negro, 255=blanco
-            final bool isBlack = pixel.r == 0;
-
-            if (isBlack) {
-              final int byteIndex = dy ~/ 8; // 0, 1, o 2
-              final int bitIndex = dy % 8;
-              column[byteIndex] |= (1 << (7 - bitIndex));
-            }
-          }
-
-          bytes.add(column);
-        }
-
-        // Avanzar línea después de cada banda
-        bytes.add(<int>[0x0A]);
-        bandCount++;
+      // 3) Ajuste de gamma (gamma > 1 aclara)
+      if (gamma != 1.0) {
+        gray = _applyGamma(gray, gamma);
       }
 
-      dev.log('[EscPosConverter] Procesadas $bandCount bandas de 24 puntos');
+      // 4) Binarizar
+      final im.Image mono = useDither
+          ? toMonoDitherFS(gray) // 0 / 255 con dithering
+          : _toMonoThreshold(gray, threshold); // 0 / 255 por umbral
 
-    // 3) Ajuste de gamma (gamma > 1 aclara)
-    if (gamma != 1.0) {
-      gray = _applyGamma(gray, gamma);
+      // 5) Convertir a formato ESC/POS raster (GS v 0) en bandas
+      return _buildRasterBytes(mono, bandHeight: bandHeight, invert: invert);
+    } catch (e) {
+      dev.log('[EscPosConverter] Error: $e');
+      return Uint8List(0);
     }
-
-    // 4) Binarizar
-    final im.Image mono = useDither
-        ? toMonoDitherFS(gray) // 0 / 255 con dithering
-        : _toMonoThreshold(gray, threshold); // 0 / 255 por umbral
-
-    // 5) Convertir a formato ESC/POS raster (GS v 0) en bandas
-    return _buildRasterBytes(mono, bandHeight: bandHeight, invert: invert);
   }
 
   /// Aplica un threshold simple.
