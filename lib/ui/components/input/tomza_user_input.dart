@@ -71,6 +71,7 @@ class _UserInputState extends State<UserInput> {
       padding: widget.padding ?? EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             widget.title,
@@ -80,7 +81,6 @@ class _UserInputState extends State<UserInput> {
               color: theme.textTheme.bodyMedium?.color,
             ),
           ),
-          const SizedBox(height: 8),
           TextFormField(
             controller: widget.controller,
             validator: widget.validator,
