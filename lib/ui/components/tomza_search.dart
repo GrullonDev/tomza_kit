@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class TomzaSearchField<T> extends StatelessWidget {
   const TomzaSearchField({
@@ -14,6 +15,9 @@ class TomzaSearchField<T> extends StatelessWidget {
     this.onClear,
     this.validator,
     this.onChanged,
+    this.color,
+    this.fontSize = 16,
+    this.fontWeight = FontWeight.bold,
   });
 
   final List<T> items;
@@ -27,6 +31,9 @@ class TomzaSearchField<T> extends StatelessWidget {
   final VoidCallback? onClear;
   final String? Function(String?)? validator;
   final void Function(String)? onChanged;
+  final Color? color;
+  final double fontSize;
+  final FontWeight fontWeight;
 
   @override
   Widget build(BuildContext context) {
@@ -65,6 +72,11 @@ class TomzaSearchField<T> extends StatelessWidget {
           horizontal: 16,
           vertical: 12,
         ),
+      ),
+      style: GoogleFonts.zenAntiqueSoft(
+        color: color,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
       ),
     );
   }

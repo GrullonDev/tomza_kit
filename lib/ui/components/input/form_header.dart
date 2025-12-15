@@ -7,12 +7,16 @@ class FormHeader extends StatelessWidget {
     this.subtitle,
     this.center = false,
     this.spacing = 8,
+    this.fontSize = 16,
+    this.fontWeight = FontWeight.bold,
   });
 
   final String title;
   final String? subtitle;
   final bool center;
   final double spacing;
+  final double fontSize;
+  final FontWeight fontWeight;
 
   @override
   Widget build(BuildContext context) {
@@ -39,6 +43,8 @@ class FormHeader extends StatelessWidget {
             textAlign: align,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              fontSize: fontSize,
+              fontWeight: fontWeight,
             ),
           ),
         ],
